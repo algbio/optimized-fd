@@ -60,7 +60,7 @@ As an example you can try:
 - The output is a file containing a sequence of paths separated by lines starting with `#` (one per flow
 graph in the input).
 - Each line contains the weight associated and the content of a path corresponding sequence of vertices.
-- An example of such a format can be found in `./example_inputs/example.safe`.
+- An example of such a format can be found in `./example_inputs/example.out`.
 
 ## Parameters
 

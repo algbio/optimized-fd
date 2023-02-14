@@ -3,7 +3,7 @@
 
 In the MFD problem, we are given a flow in a directed acyclic graph (DAG) with unique source *s* and unique sink *t*, and we need to decompose it into the minimum number of weighted paths (usually the weights are positive integers) from *s* to *t*, such that the weights of the paths sum up to the flow values, for every edge. Additional informating regarding pre-existing paths required to be in the final solution can be used in order to speed up the solution process.
 
-In the image below, an example of a flow network is displayed the flow is decomposable into 3 weighted paths, and this number is minimum. 
+In the image below, an example of a flow network is displayed: 
 
 ![MFD Example](https://github.com/FernandoHDias/optimized-fd/raw/main/MFD-1.png) 
 

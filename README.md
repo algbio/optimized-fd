@@ -1,21 +1,41 @@
-# optimized-fd
+# Algorithm Optimization applied to Minimum Flow Decomposition via Integer Linear Programming
 
-optimized-fd is a tool for minimum flow decompositions (mfd) using integer linear programming by implementing several optimization to reduce their size (number of variables/constrains and feasible region dimension).
 
-# Installation
+In the MFD problem, we are given a flow in a directed acyclic graph (DAG) with unique source *s* and unique sink *t*, and we need to decompose it into the minimum number of weighted paths (usually the weights are positive integers) from *s* to *t*, such that the weights of the paths sum up to the flow values, for every edge. Additional informating regarding pre-existing paths required to be in the final solution can be used in order to speed up the solution process.
 
-- Install [miniconda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html)
-- Clone our this repository and `cd` to the corresponding folder
-- `conda env create -f conda_environment.yml`
+In the image below, the flow is decomposable into 3 weighted paths, and this number is minimum. 
+
+![MFD Example](https://github.com/FernandoHDias/optimized-fd/MFD-1.pdf) 
+![MFD Example](https://github.com/FernandoHDias/optimized-fd/MFD-2.pdf) 
+
+MFD-optimized is an upgraded tool for minimum flow decompositions (mfd) using integer linear programming by implementing several optimization to reduce their size (number of variables/constrains and feasible region dimension).
+
+Flow decomposition is 
+
+# Pre-requisites
+
+All the formulations available require the Gurobi solver to solve its model.  
+Download the solver from [www.gurobi.com](www.gurobi.com), activate the (academic) license as instructed, and then install the Python API with:
+
+```
+pip3 install gurobipy
+```
+
+Also, it requires a few extra Python libraries:
+
+  - itertools
+  - more_itertools
+  - math
+  - os 
+  - networkx 
 
 # Run
 
-To run the project activate the conda environment you created during installation (`conda activate mfd-safety`) and use
-`python` to execute the `fd_optimized.py` file.
+To run the formulation, use 'python' to execute the 'mfd_optimized.py' file.
 
 As an example you can try:
 
-`python ./src/mfd_safety.py -i ./example_inputs/example.graph -o ./example_inputs/example.safe`
+`python ./src/mfd_safety.py -i ./example_inputs/example.graph -safe ./example_inputs/example.paths -o ./example_inputs/results.path`
 
 ## Input
 
@@ -24,6 +44,13 @@ As an example you can try:
 `u` to  `v` carrying `f` flow is represented in a separated line in the format `u v f`.
 - Vertices must be integers following a topological order of the graph.
 - An example of such a format can be found in `./example_inputs/example.graph`.
+
+## Safe 
+
+- The safe file is an auxiliary file containining safe paths for each corresponding graph in the input file.
+- The first element of each line is '-1' and the following elements are the vertices creating such path.
+- Vertices must be integers following a topological order of the graph.
+- An example of such a format can be found in `./example_inputs/example.paths`.
 
 ## Output
 
@@ -36,6 +63,9 @@ graph in the input).
 
 - `-i <path to input file>`. Mandatory.
 - `-o <path to locate output>`. Mandatory.
+- '-safe <path to safe file>'. Mandatory.
+
+Optional Parameters (optional)
 - `-stats` Output stats to file <output>.stats
 - `-t <n>` Use n threads for the Gurobi solver; use 0 for all threads (default 0).
 - `-ilptb <n>` Maximum time (in seconds) that the ilp solver is allowed to take when computing safe paths for one flow graph.
@@ -47,4 +77,4 @@ the specified strategy to extend/reduce the current safe interval.
 - `-st/est/rst <n>` When running the two-finger algorithm run the `small strategy` when the search space is less than n
 and the `large strategy` otherwise.
 - `-ugtd/-ugbu` Run a group testing algorithm (top down or bottom up) instead of two-finger.
-- 
+

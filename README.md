@@ -34,11 +34,11 @@ Also, it requires a few extra Python libraries:
 
 # Run
 
-To run the formulation, use 'python' to execute the 'mfd_optimized.py' file.
+To run the formulation, use 'python' to execute the 'mfd_optimization.py' file.
 
 As an example you can try:
 
-`python ./src/mfd_safety.py -i ./example_inputs/example.graph -safe ./example_inputs/example.paths -o ./example_inputs/results.path`
+`python ./mfd_optimization/mfd_optimization.py -i ./example_inputs/example.graph -safe ./example_inputs/example.paths -o ./example_inputs/results.path`
 
 ## Input
 

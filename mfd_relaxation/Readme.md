@@ -1,6 +1,6 @@
 # Relaxed MFD via Integer Linear Programming
 
-This extension is created by relaxing one of the conditions in the basic ILP formulation for MFD. Considering the edge identifier variable x_{uvi} is not longer binary, there is not guarantee that a feasible solution can be found, but at least a lower bound can be obtained.
+This extension is created by relaxing one of the conditions in the basic ILP formulation for MFD. Considering the edge identifier variable $x_{uvi}$ is not longer binary, there is not guarantee that a feasible solution can be found, but at least a lower bound can be obtained.
 
 # Pre-requisites
 

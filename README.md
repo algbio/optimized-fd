@@ -65,7 +65,7 @@ graph in the input).
 - `-o <path to locate output>`. Mandatory.
 - '-safe <path to safe file>'. Mandatory.
 
-Optional Parameters (optional)
+Additional Parameters (optional)
 - `-stats` Output stats to file <output>.stats
 - `-t <n>` Use n threads for the Gurobi solver; use 0 for all threads (default 0).
 - `-ilptb <n>` Maximum time (in seconds) that the ilp solver is allowed to take when computing safe paths for one flow graph.

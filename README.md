@@ -66,7 +66,7 @@ graph in the input).
 
 - `-i <path to input file>`. Mandatory.
 - `-o <path to locate output>`. Mandatory.
-- '-safe <path to safe file>'. Mandatory.
+- `-safe <path to safe file>`. Mandatory.
 
 Additional Parameters (optional)
 - `-stats` Output stats to file <output>.stats

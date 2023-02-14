@@ -5,8 +5,8 @@ In the MFD problem, we are given a flow in a directed acyclic graph (DAG) with u
 
 In the image below, the flow is decomposable into 3 weighted paths, and this number is minimum. 
 
-![MFD Example](https://github.com/FernandoHDias/optimized-fd/MFD-1.pdf) 
-![MFD Example](https://github.com/FernandoHDias/optimized-fd/MFD-2.pdf) 
+[MFD Example](https://github.com/FernandoHDias/optimized-fd/MFD-1.pdf) 
+[MFD Example](https://github.com/FernandoHDias/optimized-fd/MFD-2.pdf) 
 
 MFD-optimized is an upgraded tool for minimum flow decompositions (mfd) using integer linear programming by implementing several optimization to reduce their size (number of variables/constrains and feasible region dimension).
 

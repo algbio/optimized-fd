@@ -160,11 +160,22 @@ def get_solution(model, data, size):
         paths = [list() for _ in range(size)]
         for k in range(size):
             w_sol[k] = round(model.getVarByName(f'w[{k}]').x)
+        
+        # check if the path is binary
+        binary = True
         for (u, v, i, k) in T:
-            if round(model.getVarByName(f'x[{u},{v},{i},{k}]').x) == 1:
-                paths[k].append((u, v, i))
-        for k in range(len(paths)):
-            paths[k] = sorted(paths[k])
+            if model.getVarByName(f'x[{u},{v},{i},{k}]').x != 1 and model.getVarByName(f'x[{u},{v},{i},{k}]').x != 0:
+                binary = False
+                break
+        if binary:
+            for (u, v, i, k) in T:
+                if round(model.getVarByName(f'x[{u},{v},{i},{k}]').x) == 1:
+                    paths[k].append((u, v, i))
+            for k in range(len(paths)):
+                paths[k] = sorted(paths[k])
+        
+        else:
+            paths = 0
 
         data['weights'], data['solution'] = w_sol, paths
 
@@ -223,19 +234,21 @@ def fd_fixed_size(data, size):
     return data
 
 def output_paths(output,paths,weights):
+    if paths == 0:
+        print("No path found")
     
-    numberOfPaths = len(paths)
-
-    for nP in range(0,numberOfPaths):
-        nodes = set()
-        for (i,j,k) in paths[nP]:
-            nodes.add(i)
-            nodes.add(j)
-        
-        output.write(str(weights[nP]))
-        for i in nodes:
-            output.write(' '.join([' ',str(i)]))
-        output.write('\n')
+    else:
+        numberOfPaths = len(paths)
+        for nP in range(0,numberOfPaths):
+            nodes = set()
+            for (i,j,k) in paths[nP]:
+                nodes.add(i)
+                nodes.add(j)
+            
+            output.write(str(weights[nP]))
+            for i in nodes:
+                output.write(' '.join([' ',str(i)]))
+            output.write('\n')
 
 def compute_graph_metadata(graph):
 
@@ -321,8 +334,6 @@ if __name__ == '__main__':
                         help='Number of threads to use for the Gurobi solver; use 0 for all threads (default 0).')
     parser.add_argument('-ilptb', '--ilp-time-budget', type=float, help='Maximum time (in seconds) that the ilp solver is allowed to take when computing safe paths for one graph')
 
-    
- 
     requiredNamed = parser.add_argument_group('required arguments')
     requiredNamed.add_argument('-i', '--input', type=str, help='Input filename', required=True)
     requiredNamed.add_argument('-o', '--output', type=str, help='Output filename', required=True)

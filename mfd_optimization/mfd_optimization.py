@@ -6,6 +6,7 @@ import sys
 import argparse
 import networkx as nx
 import gurobipy as gp
+import subprocess
 from gurobipy import GRB
 from collections import deque
 from bisect import bisect
@@ -111,22 +112,37 @@ def mfd_algorithm_repeated_exp_search(data, base_unfeasible, sequential_threshol
     return mfd_algorithm_repeated_exp_search(data, base_unfeasible+int(exp/2), sequential_threshold)
 
 
-def mfd_algorithm(data,paths):
+def mfd_algorithm(data, safe_paths, greedy_paths=[]):
 
     sequential_threshold = data['sequential_threshold']
 
+    lower_bound = len(safe_paths)
+    upper_bound = len(greedy_paths) if greedy_paths else len(data['graph'].edges) + 1
+
+    if lower_bound == upper_bound:
+        data['message'] = 'solved'
+        return data
+
     data['message'] = 'unsolved'
     if sequential_threshold == 0:
-        for i in range(len(paths), len(data['graph'].edges) + 1):
-            if fd_fixed_size(data,paths, i)['message'] == 'solved':
-                return data
+        L, R = lower_bound, upper_bound
+        # invariant: L no, R yes
+        while L + 1 < R:
+            i = (L + R) // 2
+            if fd_fixed_size(data, safe_paths, i)['message'] == 'solved':
+                R = i
+            else:
+                L = i
+        return data
     else:
-        mfd_algorithm_repeated_exp_search(data,paths, sequential_threshold)
+        mfd_algorithm_repeated_exp_search(data,safe_paths, sequential_threshold)
 
     return data
 
 
 def build_base_ilp_model(data, paths, size):
+
+    
 
     graph = data['graph']
     max_flow_value = data['max_flow_value']
@@ -158,6 +174,12 @@ def build_base_ilp_model(data, paths, size):
             if v not in sources and v not in sinks:
                 model.addConstr(sum(x[v, w, i, k] for _, w, i in graph.out_edges(v, keys=True)) - sum(x[u, v, i, k] for u, _, i in graph.in_edges(v, keys=True)) == 0)
 
+    # Decrease the search space: path i should go through node i in mwa (antichain)
+    #assert size >= len(mwa)
+    #for k in range(len(mwa)):
+    #    model.addConstr(sum(x[mwa[k], w, i, k] for _, w, i in graph.out_edges(mwa[k], keys=True)) == 1)
+    #    model.addConstr(sum(x[u, mwa[k], i, k] for u, _, i in graph.in_edges(mwa[k], keys=True)) == 1)
+
     # flow balance
     for (u, v, i, f) in graph.edges(keys=True, data='flow'):
         model.addConstr(f == sum(z[u, v, i, k] for k in range(size)))
@@ -173,10 +195,12 @@ def build_base_ilp_model(data, paths, size):
     if paths != 0:
         k = 0
         for path in paths:
-            for (u,v) in path:
-                model.addConstr(x[u,v,0,k] == 1)
-                # change how you feel
-                # constr x[u,v,i,k' != k] ==0
+            for (u,v,i) in path:
+                model.addConstr(x[u,v,i,k] == 1)
+                for k_ in range(size):
+                    if k_ == k:
+                        continue
+                    model.addConstr(x[u,v,i,k_] == 0)
             k = k + 1
 
     return model, x, w, z
@@ -652,7 +676,30 @@ def extract_weighted_path(sources, graph):
     return path, min([graph.edges[e]['remaining_flow'] for e in path])
 
 
-def decompose_flow(mfd):
+def extract_highest_weight_path(sources, sinks, graph):
+
+    total_flow = sum([sum([f for u, v, f in graph.out_edges(u, data='remaining_flow')]) for u in sources])
+    highest_weight_of_any_path = {v: total_flow for v in sinks}
+
+    for v in list(reversed(list(nx.topological_sort(graph)))):
+        if v not in sinks:
+            highest_weight_of_any_path[v] = max([min(graph.edges[v,u,k]['remaining_flow'], highest_weight_of_any_path[u]) for (v,u,k) in graph.out_edges(v, keys=True)])
+
+    highest_flow = max([v for v in [highest_weight_of_any_path[s] for s in sources]])
+
+    path = []
+    for s in sources:
+        first_edges = [e for e in graph.out_edges(s, keys=True) if graph.edges[e]['remaining_flow'] >= highest_flow]
+        if first_edges:
+            path.append(first_edges[0])
+            while [e for e in graph.out_edges(path[-1][1], keys=True) if graph.edges[e]['remaining_flow'] >= highest_flow]:
+                path.append([e for e in graph.out_edges(path[-1][1], keys=True) if graph.edges[e]['remaining_flow'] >= highest_flow][0])
+            break
+    
+    return path, highest_flow
+
+# If greedy_min is True, it will always extract a highest flow path, otherwise it will take an arbitrary path
+def decompose_flow(mfd, greedy_min=False):
 
     weights, paths = list(), list()
 
@@ -667,7 +714,7 @@ def decompose_flow(mfd):
 
     while remaining_flow > 0:
 
-        path, weight = extract_weighted_path(sources, graph)
+        path, weight = extract_weighted_path(sources, graph) if not greedy_min else extract_highest_weight_path(sources, sinks, graph)
         weights.append(weight)
         paths.append(path)
 
@@ -680,14 +727,14 @@ def decompose_flow(mfd):
     return mfd
 
 
-def compute_maximal_safe_paths_for_flow_decompositions(mfd):
+def compute_maximal_safe_paths_for_flow_decompositions(mfd, greedy_min=False):
 
     if 'in_flow' not in mfd:
         mfd['in_flow'] = {v: sum([f for u, v, f in mfd['graph'].in_edges(v, data='flow')]) for v in mfd['graph'].nodes}
         mfd['out_flow'] = {u: sum([f for u, v, f in mfd['graph'].out_edges(u, data='flow')]) for u in mfd['graph'].nodes}
 
-    if not mfd['solution']:
-        mfd = decompose_flow(mfd)
+    if 'solution' not in mfd or not mfd['solution']:
+        mfd = decompose_flow(mfd, greedy_min)
 
     paths = mfd['solution']
     max_safe_paths = list()
@@ -994,6 +1041,134 @@ def solve_instances(graphs, predefined_paths,output_file, output_stats=False, us
     if output_stats:
         stats.close()
 
+def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge, max_safe_paths, greedy_paths):
+    graph = mfd['graph']
+
+    N = graph.number_of_nodes()
+    M = graph.number_of_edges()
+    orig_N = N
+    orig_M = M
+
+    # add node between every edge
+    E = {u: list() for u in graph.nodes}
+    newnode_to_edge = dict()
+    edge_to_newnode = dict()
+    for (u,v,i) in graph.edges:
+        x = N
+        E[u].append(x)
+        E[x] = [v]
+        newnode_to_edge[x] = (u,v,i)
+        edge_to_newnode[u,v,i] = x
+        N += 1
+        M += 1
+    assert M == 2*orig_M
+
+
+    """
+        Call C++ code to calculate maximum weight antichain
+        Program mwa calls naive_minflow_reduction -> naive_minflow_solve -> maxantichain_from_minflow
+    """
+    mwa_input = "{} {}\n".format(N, M)
+    for u in E:
+        for v in E[u]:
+            mwa_input += "{} {}\n".format(u, v)
+    for v in range(orig_N):
+        mwa_input += "{} {}\n".format(v, 0)
+    for (u,v,i) in longest_safe_path_of_edge:
+        x = edge_to_newnode[u,v,i]
+        mwa_input += "{} {}\n".format(x, longest_safe_path_of_edge[u,v,i][0])
+
+    res = subprocess.run(["./mwa"], input=mwa_input, text=True, capture_output=True)
+    mwa = list(map(int, res.stdout.split(' ')))
+    mwa = list(map(lambda x: x-1, mwa))
+    for x in mwa:
+        assert x >= orig_N
+        
+    mwa_safe_paths = []
+    for x in mwa:
+        u,v,i = newnode_to_edge[x]
+        # Find corresponding longest safe path going through the edge (u,v,i)
+        ip, iw = longest_safe_path_of_edge[u,v,i][1]
+        l, r = max_safe_paths[ip][iw]
+        mwa_safe_paths.append(greedy_paths[ip][l:r+1])
+
+    return mwa_safe_paths
+
+def solve_instances_mwa(graphs, output_file, output_stats=False, use_excess_flow=False,
+                           use_y_to_v=False, use_group_top_down=False, use_group_bottom_up=False,
+                           sequential_threshold=0, strategy=dict()):
+    output = open(output_file, 'w+')
+    if output_stats:
+        stats = open(f'{output_file}.stats', 'w+')
+    
+    for g, graph in enumerate(graphs):
+
+        output.write(f'# graph {g}\n')
+        if output_stats:
+            stats.write(f'# graph {g}\n')
+        
+        if not graph['edges']:
+            continue
+
+        mfd = compute_graph_metadata(graph, use_excess_flow, use_y_to_v,
+                                     use_group_top_down, use_group_bottom_up,
+                                     sequential_threshold, strategy)
+        
+        if output_stats and use_y_to_v:
+            stats.write(f'Y2V: {len(mfd["graph"].edges)}/{len(mfd["mapping"][0].edges)}\n')
+        
+        global time_budget
+        time_budget = ilp_time_budget
+
+        global ilp_counter
+        ilp_counter = 0
+
+        if output_stats:
+            is_unique_decomposition = True
+        
+        if len(mfd['graph'].edges) > 0:
+
+            greedy_paths, max_safe_paths = compute_maximal_safe_paths_for_flow_decompositions(mfd, greedy_min=True)
+            # longest safe path = (length, (path index, safe window index))
+            longest_safe_path_of_edge = dict()
+            for u,v,i in mfd['graph'].edges:
+                longest_safe_path_of_edge[u,v,i] = (0, (-1, -1))
+
+            for ip, path in enumerate(greedy_paths):
+                for iw, window in enumerate(max_safe_paths[ip]):
+                    for j in range(window[0], window[1]):
+                        u,v,i = path[j]
+                        if longest_safe_path_of_edge[u,v,i][0] < window[1] - window[0] + 1:
+                            longest_safe_path_of_edge[u,v,i] = (window[1] - window[0] + 1, (ip, iw))
+
+            
+            mwa_safe_paths = edge_mwa_safe_paths(mfd, longest_safe_path_of_edge, max_safe_paths, greedy_paths)
+
+            mfd = mfd_algorithm(mfd, mwa_safe_paths, greedy_paths)
+        
+        else:
+            if output_stats:
+                stats.write('timeout: 0\n')
+
+        if use_y_to_v:
+            for trivial_path in mfd['trivial_paths']:
+                output_maximal_safe_path(output, trivial_path)
+
+        if output_stats:
+            stats.write(f'Decomposition size: {(len(mfd["trivial_paths"]) if "trivial_paths" in mfd else 0) + (len(mfd["solution"])  if "solution" in mfd else 0)}\n')
+            stats.write(f'ILP count: {ilp_counter}\n')
+            if ilp_time_budget:
+                stats.write(f'ILP time used: {ilp_time_budget-time_budget}/{ilp_time_budget}\n')
+
+            if is_unique_decomposition:
+                stats.write(f'Unique decomposition: 1\n')
+            else:
+                stats.write(f'Unique decomposition: 0\n')
+
+    output.close()
+    if output_stats:
+        stats.close()
+
 
 def solve_instances_safety(graphs, output_file, output_stats=False, use_excess_flow=False,
                            use_y_to_v=False, use_group_top_down=False, use_group_bottom_up=False,
@@ -1176,12 +1351,12 @@ if __name__ == '__main__':
     parser.add_argument('-st', '--strategy-threshold', type=int, help='Search space threshold to switch from --<>-strategy-small to --<>-strategy-large')
     parser.add_argument('-est', '--extension-strategy-threshold', type=int, help='Search space threshold to switch from --extension-strategy-small to --extension-strategy-large')
     parser.add_argument('-rst', '--reduction-strategy-threshold', type=int, help='Search space threshold to switch from --reduction-strategy-small to --reduction-strategy-large')
+    parser.add_argument('-safe', '--safepaths', type=str, help='Safe File filename')
 
 
     requiredNamed = parser.add_argument_group('required arguments')
     requiredNamed.add_argument('-i', '--input', type=str, help='Input filename', required=True)
     requiredNamed.add_argument('-o', '--output', type=str, help='Output filename', required=True)
-    requiredNamed.add_argument('-safe', '--safepaths', type=str, help='Safe File filename', required=True)
 
     args = parser.parse_args()
 
@@ -1193,7 +1368,7 @@ if __name__ == '__main__':
     ilp_counter = 0
     ilp_time_budget = args.ilp_time_budget
     time_budget = args.ilp_time_budget
-    solve_instances(read_input(args.input),read_safe_paths(args.safepaths),args.output, args.output_stats,
+    solve_instances_mwa(read_input(args.input),args.output, args.output_stats,
                            args.use_excess_flow, args.use_y_to_v,
                            args.use_group_top_down, args.use_group_bottom_up,
                            args.sequential_threshold, get_strategy(args))

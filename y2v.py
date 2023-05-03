@@ -291,7 +291,7 @@ def build_base_ilp_model(data, paths, size, relaxed = False):
 
     # Create variables
     if relaxed:
-        x = model.addVars(T, vtype=GRB.INTEGER, name='x')
+        x = model.addVars(T, vtype=GRB.INTEGER, name='x',lb=0)
     else:
         x = model.addVars(T, vtype=GRB.BINARY, name='x')
     w = model.addVars(SC, vtype=GRB.INTEGER, name='w', lb=0)

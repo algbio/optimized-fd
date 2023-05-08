@@ -12,31 +12,6 @@ from collections import deque
 from bisect import bisect
 from copy import deepcopy
 
-
-def read_input_graphs(graph_file):
-	graphs = []
-	flows = []
-
-	with open(graph_file, 'r') as file:
-		raw_graphs = file.read().split('#')[1:]
-		for g in raw_graphs:
-			graph = nx.MultiDiGraph()
-			flow = dict()
-
-			lines = g.split('\n')[1:]
-			if not lines[-1]:
-				lines = lines[:-1]
-			graph.add_nodes_from(range(int(lines[0])))
-			for e in lines[1:]:
-				parts = e.split()
-				key = graph.add_edge(int(parts[0]), int(parts[1]), f=float(parts[2]))
-				flow[(int(parts[0]), int(parts[1]), key)] = float(parts[2])
-
-			graphs.append(graph)
-			flows.append(flow)
-
-	return graphs, flows
-
 # Main class for Minimum flow decomposition
 class Mfd:
 
@@ -48,10 +23,9 @@ class Mfd:
 	with flow conservation on every node that is not a source
 	or a sink.
 	"""
-	def __init__(self, graph, flow):
+	def __init__(self, graph):
 		# Graph data
 		self.G = graph
-		self.flow = flow
 		self.max_flow_value = self.find_max_flow_value()
 		self.sources = self.find_sources()
 		self.sinks = self.find_sinks()
@@ -74,7 +48,10 @@ class Mfd:
 	Returns the maximum flow value of self.graph.
 	"""
 	def find_max_flow_value(self):
-		return max(self.flow.values())
+		flow = 0
+		for e in self.G.edges:
+			flow = max(flow, self.G.edges[e]['f'])
+		return flow
 
 	"""
 	Returns the total flow of the graph. Must be called
@@ -268,6 +245,7 @@ class Mfd:
 			remaining_flow -= weight
 
 		self.solved_greedy = True
+		self.k_greedy = len(self.paths_greedy)
 		return True
 	
 	"""
@@ -286,6 +264,7 @@ class Mfd:
 		for path in self.paths_greedy:
 			if len(path) <= 1:
 				self.safe_paths.append([(0, len(path))])
+				continue
 
 			self.safe_paths.append([])
 			L, R = 0, 2
@@ -312,12 +291,12 @@ class Mfd:
 
 
 # TODO: Monday:
-# y-to-v reduction
-# symmetry
+# y-to-v reduction    DONE
 # greedy decomp		  DONE
 # mwa				  DONE
 # safe paths		  DONE
 # remove s-t paths
+# symmetry
 
 # Install gurobi
 # Run first tests
@@ -347,10 +326,8 @@ def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge, max_safe_paths):
 	assert M == 2*orig_M
 
 
-	"""
-		Call C++ code to calculate maximum weight antichain
-		Program mwa calls naive_minflow_reduction -> naive_minflow_solve -> maxantichain_from_minflow
-	"""
+	# Call C++ code to calculate maximum weight antichain
+	# Program mwa calls naive_minflow_reduction -> naive_minflow_solve -> maxantichain_from_minflow
 	mwa_input = "{} {}\n".format(N, M)
 	for u in E:
 		for v in E[u]:
@@ -373,11 +350,32 @@ def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge, max_safe_paths):
 		# Find corresponding longest safe path going through the edge (u,v,i)
 		ip, iw = longest_safe_path_of_edge[u,v,i][1]
 		l, r = max_safe_paths[ip][iw]
-		mwa_safe_paths.append(greedy_paths[ip][l:r+1])
+		mwa_safe_paths.append(greedy_paths[ip][l:r])
 
 	return mwa_safe_paths
 
-def y_to_v():
+def read_input_graphs(graph_file):
+	graphs = []
+
+	with open(graph_file, 'r') as file:
+		raw_graphs = file.read().split('#')[1:]
+		for g in raw_graphs:
+			graph = nx.MultiDiGraph()
+			flow = dict()
+
+			lines = g.split('\n')[1:]
+			if not lines[-1]:
+				lines = lines[:-1]
+			graph.add_nodes_from(range(int(lines[0])))
+			for e in lines[1:]:
+				parts = e.split()
+				key = graph.add_edge(int(parts[0]), int(parts[1]), f=float(parts[2]))
+			graphs.append(graph)
+
+	return graphs
+
+def y_to_v(ngraph):
+
 	def get_out_tree(ngraph, v, processed, contracted):
 
 		cont = {e: contracted[e] for e in contracted}
@@ -462,6 +460,68 @@ def y_to_v():
 					in_trees[root] = leaf_edges
 		return in_trees, contracted
 
+	def get_expanded_path(path, graph, original_graph, out_contraction_graph):
+
+		out_contraction_path = list()
+
+		for u, v, i in path:
+			root = v
+			v, i = graph.edges[u, v, i]['succ']
+
+			expanded_edge = list()
+			while v != root:
+				expanded_edge.append((u, v, i))
+				u, v, i = list(out_contraction_graph.out_edges(v, keys=True))[0]
+
+			expanded_edge.append((u, v, i))
+			out_contraction_path += list(expanded_edge)
+
+		original_path = list()
+
+		for u, v, i in out_contraction_path:
+			root = u
+			u = out_contraction_graph.edges[u, v, i]['pred']
+			expanded_edge = list()
+			while u != root:
+				expanded_edge.append((u, v, i))
+				u, v, i = list(original_graph.in_edges(u, keys=True))[0]
+			expanded_edge.append((u, v, i))
+			original_path += list(reversed(expanded_edge))
+
+		return original_path
+
+	out_trees, contracted = get_out_trees(ngraph)
+
+	mngraph_out_contraction = nx.MultiDiGraph()
+	for u, v, i in ngraph.edges(keys=True):
+		if not contracted[u, v, i]:
+			mngraph_out_contraction.add_edge(u, v, f=ngraph.edges[u, v, i]['f'], pred=u)
+
+	for root, leaf_edges in out_trees.items():
+		for u, v, i in leaf_edges:
+			mngraph_out_contraction.add_edge(root, v, f=ngraph.edges[u, v, i]['f'], pred=u)
+
+	in_trees, contracted = get_in_trees(mngraph_out_contraction)
+
+	mngraph_in_contraction = nx.MultiDiGraph()
+	for u, v, i in mngraph_out_contraction.edges(keys=True):
+		if not contracted[u, v, i]:
+			mngraph_in_contraction.add_edge(u, v, f=mngraph_out_contraction.edges[u, v, i]['f'], succ=(v, i))
+
+	for root, leaf_edges in in_trees.items():
+		for u, v, i in leaf_edges:
+			mngraph_in_contraction.add_edge(u, root, f=mngraph_out_contraction.edges[u, v, i]['f'], succ=(v, i))
+
+	# Remove trivial_paths found as edges from source to sink in the contraction
+	trivial_paths = list()
+	edges = list(mngraph_in_contraction.edges(keys=True))
+	for u, v, i in edges:
+		if mngraph_in_contraction.in_degree(u) == 0 and mngraph_in_contraction.out_degree(v) == 0:
+			trivial_paths.append(get_expanded_path([(u, v, i)], mngraph_in_contraction, ngraph, mngraph_out_contraction))
+			mngraph_in_contraction.remove_edge(u, v, i)
+
+	return mngraph_out_contraction, mngraph_in_contraction, trivial_paths
+
 
 if __name__ == '__main__':
 
@@ -514,11 +574,12 @@ if __name__ == '__main__':
 	print(f'INFO: Using {threads} threads for the Gurobi solver')
 
 	
-	graphs, flows = read_input_graphs(args.input)
-	mfd = Mfd(graphs[0], flows[0])
+	graphs = read_input_graphs(args.input)
+	mngraph_out_contraction, mngraph_in_contraction, trivial_paths = y_to_v(graphs[8])
+	mfd = Mfd(mngraph_out_contraction)
 	print("max flow:", mfd.max_flow_value)
-	mfd.decompose_flow_heuristic()
+	print(trivial_paths)
+	assert mfd.decompose_flow_heuristic()
 	assert mfd.find_safe_paths()
-	print(mfd.paths_greedy)
-	print(mfd.safe_paths)
+	print(mfd.k_greedy)
 

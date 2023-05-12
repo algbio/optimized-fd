@@ -69,10 +69,9 @@ class Mfd:
 	Returns the sum of flow going out of a node v.
 	"""
 	def out_flow(self, v):
-
 		flow = 0
-		for u,v,i in self.G.out_edges(v, keys=True):
-			flow += self.G.edges[u,v,i]['f']
+		for v,u,i in self.G.out_edges(v, keys=True):
+			flow += self.G.edges[v,u,i]['f']
 		return flow
 
 	"""
@@ -92,8 +91,8 @@ class Mfd:
 	"""
 	def mfd_algorithm(self, safe_paths=[]):
 		# Note when changing the bounds, make sure not to break any of the following code
-		lower_bound = len(safe_paths) # TODO: improve bound
-		upper_bound = len(self.paths_greedy) if self.solved_greedy else self.G.number_of_edges() # TODO: improve bound
+		lower_bound = max(1, len(safe_paths)) # TODO: improve bound
+		upper_bound = self.k_greedy if self.solved_greedy else self.G.number_of_edges() - self.G.number_of_nodes() + 2
 
 		if lower_bound == upper_bound:
 			self.solved = True
@@ -102,28 +101,34 @@ class Mfd:
 			# Make sure this is always correct whenever the bounds get changed
 			self.paths = self.paths_greedy if self.solved_greedy else safe_paths
 
-			return
+			return True
 
-		#L, R = lower_bound-1, upper_bound
-		## invariant: L no, R yes
-		#while L + 1 < R:
-		#	i = (L + R) // 2
-		#	print(i)
-		#	if self.solve(safe_paths, i):
-		#		R = i
-		#	else:
-		#		L = i
-		for i in range(1,upper_bound):
-			print(i)
+		L, R = lower_bound-1, upper_bound
+		# invariant: L no, R yes
+		while L + 1 < R:
+			i = (L + R) // 2
 			if self.solve(safe_paths, i):
-				print("Calculated minimum flow decomposition of size", i)
-				break
+				R = i
+			else:
+				L = i
+
+		if R == upper_bound:
+			if not self.solve(safe_paths, R):
+				# Something went wrong
+				return False
+
+		return True
+
+		#for i in range(1,upper_bound+1):
+		#	if self.solve(safe_paths, i):
+		#		return True
+		#return False
 
 	"""
 	Solves the ILP given by build_ilp_model.
 	"""
-	def solve(self, paths, k):
-		model, _, _, _ = self.build_ilp_model(paths, k)
+	def solve(self, safe_paths, k):
+		model, _, _, _ = self.build_ilp_model(safe_paths, k)
 		model.optimize()
 
 		if model.status == GRB.OPTIMAL:
@@ -135,7 +140,7 @@ class Mfd:
 			
 			for i in range(k):
 				self.weights[i] = round(model.getVarByName(f'w[{i}]').x)
-			for (u, v, i, j) in T:
+			for (u, v, i, j) in I:
 				if round(model.getVarByName(f'x[{u},{v},{i},{j}]').x) == 1:
 					self.paths[j].append((u, v, i))
 			for j in range(k):
@@ -146,7 +151,7 @@ class Mfd:
 	"""
 	Build gurobi ILP model.
 	"""
-	def build_ilp_model(self, paths, size):
+	def build_ilp_model(self, safe_paths, size):
 		# create index sets
 		T = [(u, v, i, k) for (u, v, i) in self.G.edges(keys=True) for k in range(size)]
 		SC = list(range(size))
@@ -182,14 +187,13 @@ class Mfd:
 				model.addConstr(z[u, v, i, k] <= w[k])
 
 		# pre-defined constraints
-		if paths != 0:
-			for (k, path) in enumerate(paths):
-				for (u, v, i) in path:
-					model.addConstr(x[u, v, i, k] == 1)
-					for k_ in range(len(paths)):
-						if k_ == k:
-							continue
-						model.addConstr(x[u, v, i, k_] == 0)
+		for (k, (idx, l, r)) in enumerate(safe_paths):
+			for u, v, i in self.paths_greedy[idx][l:r]:
+			    model.addConstr(x[u, v, i, k] == 1)
+
+		# remove some symmetry
+		for k in range(len(safe_paths), size-1):
+			model.addConstr(w[k] <= w[k+1])
 
 		return model, x, w, z
 
@@ -220,11 +224,11 @@ class Mfd:
 				if v not in self.sinks:
 					highest_weight_of_any_path[v] = max([min(self.G.edges[v,u,k]['remaining_flow'], highest_weight_of_any_path[u]) for (v,u,k) in self.G.out_edges(v, keys=True)])
 
-			largest_flow = max([v for v in [highest_weight_of_any_path[s] for s in self.sources]])
+			largest_flow = max([highest_weight_of_any_path[s] for s in self.sources])
 
 			path = []
 			for s in self.sources:
-				first_edges = [e for e in self.G.out_edges(s, keys=True) if self.G.edges[e]['remaining_flow'] >= largest_flow]
+				first_edges = [e for e in self.G.out_edges(s, keys=True) if highest_weight_of_any_path[e[1]] >= largest_flow and self.G.edges[e]['remaining_flow'] >= largest_flow]
 				if first_edges:
 					path.append(first_edges[0])
 					while [e for e in self.G.out_edges(path[-1][1], keys=True) if highest_weight_of_any_path[e[1]] >= largest_flow and self.G.edges[e]['remaining_flow'] >= largest_flow]:
@@ -243,6 +247,8 @@ class Mfd:
 			for e in path:
 				self.G.edges[e]['remaining_flow'] -= weight
 			remaining_flow -= weight
+
+		assert remaining_flow == 0
 
 		self.solved_greedy = True
 		self.k_greedy = len(self.paths_greedy)
@@ -269,8 +275,15 @@ class Mfd:
 			self.safe_paths.append([])
 			L, R = 0, 2
 			excess_flow = self.G.edges[path[0]]['f'] + self.G.edges[path[1]]['f'] - self.out_flow(path[1][0])
+
 			while L < len(path) - 1:
+
 				while excess_flow > 0:
+					if R - L >= 2:
+						# add pair (L, R)
+						while self.safe_paths[-1] and (self.safe_paths[-1][-1][0] >= L and self.safe_paths[-1][-1][1] <= R):
+							self.safe_paths[-1].pop()
+						self.safe_paths[-1].append((L, R))
 					if R == len(path):
 						break
 					R += 1
@@ -278,10 +291,11 @@ class Mfd:
 
 				assert R <= len(path)
 				assert L < len(path)
-				if R - L >= 3:
-					self.safe_paths[-1].append((L, R-1))
 
-				while excess_flow <= 0 or R == len(path):
+				if R == len(path) and excess_flow > 0:
+				    break
+
+				while excess_flow <= 0:
 					if L >= R-1:
 						break
 					L += 1
@@ -290,20 +304,9 @@ class Mfd:
 		return True
 
 
-# TODO: Monday:
-# y-to-v reduction    DONE
-# greedy decomp		  DONE
-# mwa				  DONE
-# safe paths		  DONE
-# remove s-t paths
-# symmetry
-
-# Install gurobi
-# Run first tests
-# Fernando
-
-def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge, max_safe_paths):
+def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge):
 	graph = mfd.G
+	max_safe_paths = mfd.safe_paths
 	greedy_paths = mfd.paths_greedy
 
 	N = graph.number_of_nodes()
@@ -311,19 +314,23 @@ def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge, max_safe_paths):
 	orig_N = N
 	orig_M = M
 
+	H = max(graph.nodes())+1
+
 	# add node between every edge
 	E = {u: list() for u in graph.nodes}
 	newnode_to_edge = dict()
 	edge_to_newnode = dict()
 	for (u,v,i) in graph.edges:
-		x = N
+		x = H
 		E[u].append(x)
 		E[x] = [v]
 		newnode_to_edge[x] = (u,v,i)
 		edge_to_newnode[u,v,i] = x
 		N += 1
 		M += 1
+		H += 1
 	assert M == 2*orig_M
+	assert N == orig_M + orig_N
 
 
 	# Call C++ code to calculate maximum weight antichain
@@ -332,6 +339,7 @@ def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge, max_safe_paths):
 	for u in E:
 		for v in E[u]:
 			mwa_input += "{} {}\n".format(u, v)
+
 	for v in range(orig_N):
 		mwa_input += "{} {}\n".format(v, 0)
 	for (u,v,i) in longest_safe_path_of_edge:
@@ -339,10 +347,13 @@ def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge, max_safe_paths):
 		mwa_input += "{} {}\n".format(x, longest_safe_path_of_edge[u,v,i][0])
 
 	res = subprocess.run(["./mwa"], input=mwa_input, text=True, capture_output=True)
-	mwa = list(map(int, res.stdout.split(' ')))
-	mwa = list(map(lambda x: x-1, mwa))
-	for x in mwa:
-		assert x >= orig_N
+	if res.stdout != '':
+		mwa = list(map(int, res.stdout.split(' ')))
+		mwa = list(map(lambda x: x-1, mwa))
+		for x in mwa:
+			assert x >= orig_N
+	else:
+		mwa = []
 
 	mwa_safe_paths = []
 	for x in mwa:
@@ -350,7 +361,7 @@ def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge, max_safe_paths):
 		# Find corresponding longest safe path going through the edge (u,v,i)
 		ip, iw = longest_safe_path_of_edge[u,v,i][1]
 		l, r = max_safe_paths[ip][iw]
-		mwa_safe_paths.append(greedy_paths[ip][l:r])
+		mwa_safe_paths.append((ip, l, r))
 
 	return mwa_safe_paths
 
@@ -373,6 +384,17 @@ def read_input_graphs(graph_file):
 			graphs.append(graph)
 
 	return graphs
+
+def read_truth(truth_file):
+	solutions = []
+
+	with open(truth_file, 'r') as file:
+		raw_solutions = file.read().split('#')[1:]
+		for sol in raw_solutions:
+			k = sol.split('\n')
+			solutions.append(len(k)-2)
+
+	return solutions
 
 def y_to_v(ngraph):
 
@@ -522,6 +544,32 @@ def y_to_v(ngraph):
 
 	return mngraph_out_contraction, mngraph_in_contraction, trivial_paths
 
+# Main pipeline function
+def pipeline(graph):
+	mngraph_out_contraction, mngraph_in_contraction, trivial_paths = y_to_v(graph)
+	if mngraph_in_contraction.number_of_edges() == 0:
+		print("Trivially decomposable to {} paths.".format(len(trivial_paths)))
+		return len(trivial_paths)
+
+	mfd = Mfd(mngraph_in_contraction)
+	assert mfd.decompose_flow_heuristic()
+	assert mfd.find_safe_paths()
+
+	# Calculate safe paths antichain
+	longest_safe_path_of_edge = dict()
+	for u,v,i in mfd.G.edges:
+		longest_safe_path_of_edge[u,v,i] = (0, (-1, -1))
+	for ip, path in enumerate(mfd.paths_greedy):
+		for iw, window in enumerate(mfd.safe_paths[ip]):
+			for j in range(window[0], window[1]):
+				u,v,i = path[j]
+				if longest_safe_path_of_edge[u,v,i][0] < window[1] - window[0] + 1:
+					longest_safe_path_of_edge[u,v,i] = (window[1] - window[0] + 1, (ip, iw))	
+	safe_antichain = edge_mwa_safe_paths(mfd, longest_safe_path_of_edge)
+
+	assert mfd.mfd_algorithm(safe_antichain)
+	print("Calculated minimum flow decomposition of size {}.".format(mfd.k + len(trivial_paths)))
+	return mfd.k + len(trivial_paths)
 
 if __name__ == '__main__':
 
@@ -573,13 +621,9 @@ if __name__ == '__main__':
 		threads = os.cpu_count()
 	print(f'INFO: Using {threads} threads for the Gurobi solver')
 
-	
+	truths = read_truth(args.input.split('.')[0] + '.truth')
 	graphs = read_input_graphs(args.input)
-	mngraph_out_contraction, mngraph_in_contraction, trivial_paths = y_to_v(graphs[8])
-	mfd = Mfd(mngraph_out_contraction)
-	print("max flow:", mfd.max_flow_value)
-	print(trivial_paths)
-	assert mfd.decompose_flow_heuristic()
-	assert mfd.find_safe_paths()
-	print(mfd.k_greedy)
+	for i, graph in enumerate(graphs):
+		print("Running graph {}:".format(i))
+		assert pipeline(graph) == truths[i]
 

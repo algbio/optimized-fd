@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Check if the directory argument is provided
 if [ $# -eq 0 ]; then
@@ -22,7 +22,7 @@ if [ -e "$output_k_and_time" ]; then
 fi
 
 # Check if the Python script exists
-python_script="INSERT LOCATION OF TOBOGGAN"
+python_script="INSERT TOBOGGAN FILE HERE"
 if [ ! -f "$python_script" ]; then
     echo "Python script '$python_script' does not exist."
     exit 1

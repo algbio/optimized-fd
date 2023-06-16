@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Check if the directory argument is provided
 if [ $# -eq 0 ]; then

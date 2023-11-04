@@ -1,3 +1,5 @@
+Note: This README is outdated, will be updated soon.
+
 # Algorithmic Optimization applied to Minimum Flow Decomposition via Integer Linear Programming
 
 

@@ -1,8 +1,8 @@
 #!/bin/sh
 
-# Check if the directory argument is provided
+# Check if the file argument is provided
 if [ $# -eq 0 ]; then
-    echo "Please provide a directory as a command line argument."
+    echo "Please provide the input file as a command line argument."
     exit 1
 fi
 
@@ -28,8 +28,8 @@ echo "> ./run_tests_optimized.sh '$directory' '${current_dir}/tests_optimized.ou
 ./run_tests_optimized.sh "$directory" "${current_dir}/tests_optimized.out"
 
 echo "Running standard ILP.."
-echo "> ./run_tests_standard_ilp.sh '$directory' '${current_dir}/test_standard.out'"
-./run_tests_standard_ilp.sh "$directory" "${current_dir}/test_standard.out"
+echo "> ./run_tests_standard_ilp.sh '$directory' '${current_dir}/tests_standard.out'"
+./run_tests_standard_ilp.sh "$directory" "${current_dir}/tests_standard.out"
 
 echo "Running toboggan.."
 echo "> ./run_tests_toboggan.sh '$directory' '${current_dir}/tests_toboggan.out'"

@@ -22,7 +22,7 @@ if [ -e "$output_k_and_time" ]; then
 fi
 
 # Check if the Python script exists
-python_script="INSERT TOBOGGAN FILE HERE"
+python_script="/abga/work/andrgrig/toboggan/toboggan.py"
 if [ ! -f "$python_script" ]; then
     echo "Python script '$python_script' does not exist."
     exit 1
@@ -37,13 +37,13 @@ for file in "$directory"/*; do
 	if [ -f "$file" ] && [ "${file##*.}" = "graph" ]; then
 		echo "Running file $file"
 		# Toboggan requires that
-		cd /Users/andrgrig/Documents/PhD/flow-decomposition/toboggan
+		cd /abga/work/andrgrig/toboggan
 
 		# Create output file name with the same name but different extension
         output_file="${file%.graph}.toboggan.out"
 
         # Run the Python script with the file as input and extract the runtime
-		run_stdout=$( { time python3 "$python_script" --no_recovery --timeout 120 --skip_truth "$file" > "$output_file"; } 2>&1)
+		run_stdout=$( { time python3 "$python_script" --no_recovery --timeout 1800 --skip_truth "$file" > "$output_file"; } 2>&1)
         runtime=$(echo "$run_stdout" | grep "real" | awk '{print $2}')
 
 		# Extract the minutes and seconds

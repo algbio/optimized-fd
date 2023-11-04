@@ -1,0 +1,5 @@
+Average runtime: 2.01 seconds
+Lower bound was equal to upper bound for 330 out of 1067 runs.
+Overall, 5654 path indicator variables were set to one, out of totally 45621.
+Number of edges in the original graphs: 25017.
+Number of edges in the contracted graphs: 8996.

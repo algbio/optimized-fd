@@ -22,7 +22,7 @@ if [ -e "$output_k_and_time" ]; then
 fi
 
 # Check if the Python script exists
-python_script="INSERT STANDARD ILP HERE"
+python_script="/abga/work/andrgrig/MFD-ILP/MFD in DAGS/mfd_standard.py"
 if [ ! -f "$python_script" ]; then
     echo "Python script '$python_script' does not exist."
     exit 1
@@ -50,7 +50,7 @@ for file in "$directory"/*; do
 		runtime_seconds=$(echo "$minutes * 60 + $seconds" | bc)
 		total_runtime=$(echo "$total_runtime + $runtime_seconds" | bc)
 
-		echo "Run $num_runs finished in $minutes minutes and $seconds seconds ($runtime_seconds s)"
+		echo "Run $num_runs finished in $minutes minutes and $seconds seconds ($runtime_seconds s) on file $file"
 
 		# Increment the number of runs
 		num_runs=$((num_runs + 1))
@@ -59,7 +59,7 @@ for file in "$directory"/*; do
 		k=$(cat "${output_file}.time" | awk '{print $1}')
 
 		if [ $k = "0" ]; then
-			echo "$file"
+			echo "TIMEOUT: $file"
 			continue
 		fi
 

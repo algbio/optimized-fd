@@ -1,9 +1,8 @@
-Note: This README is outdated, will be updated soon.
-
 # Algorithmic Optimization applied to Minimum Flow Decomposition via Integer Linear Programming
 
+## Introduction
 
-In the Minimul Flow Decomposition (MFD) problem, we are given a flow in a directed acyclic graph (DAG) with unique source *s* and unique sink *t*, and we need to decompose it into the minimum number of weighted paths (usually the weights are positive integers) from *s* to *t*, such that the weights of the paths sum up to the flow values, for every edge. Additional informating regarding pre-existing paths required to be in the final solution can be used in order to speed up the solution process.
+In the Minimum Flow Decomposition (MFD) problem, we are given a flow in a directed acyclic graph (DAG) with unique source *s* and unique sink *t*, and we need to decompose it into the minimum number of weighted paths (usually the weights are positive integers) from *s* to *t*, such that for every edge the weights of the paths crossing the edge sum up to the flow value.
 
 In the image below, an example of a flow network is displayed: 
 
@@ -13,73 +12,54 @@ which generates the following decomposition into 5 paths:
 
 ![MFD Example](https://github.com/FernandoHDias/optimized-fd/raw/main/MFD-2.png) 
 
-MFD-optimized is an upgraded tool for minimum flow decompositions (mfd) using integer linear programming by implementing several optimization to reduce their size (number of variables/constrains and feasible region dimension).
+MFD-optimized is an upgraded tool for MFD using integer linear programming by implementing several optimization that reduce the dimension of the search space (number of unkown variables).
 
-An auxiliar tool for pre-processing an initial lowe bound can be in MFD-Relaxed.
+## Pre-requisites
 
-# Pre-requisites
+### Python libraries
+  - Gurobipy (version 10.0.1)
+    - Activate the license as instructed in [www.gurobi.com](www.gurobi.com).
+  - Networkx (version 2.4)
 
-All the formulations available require the Gurobi solver to solve its model.  
-Download the solver from [www.gurobi.com](www.gurobi.com), activate the (academic) license as instructed, and then install the Python API with:
+### Practical MPC
+```TODO```
+
+## Run
+
+To run the formulation, use `python3` to execute the `mfd_optimization.py` file.
+Run `python3 ./src/mfd_optimization.py -h` for help.
+
+### Input graph
+
+- Use `-i/--input FILE`, where FILE contains the input DAGs and flow values.
+- The input file contains a sequence of flow networks separated by lines starting with `#`.
+- The first line of each flow network contains the number of vertices of the graph
+- Every following line `u v f` describes an edge from vertex `u` to  `v` carrying `f` flow.
+- Vertices must be integers following a topological order of the graph.
+
+### Heuristic solution
+
+- To use safety optimization, a given flow decomposition is needed.
+- Use `--heuristic HEURISTIC`, where HEURISTIC contains a heuristic solution for every graph in the input FILE.
+- Every flow network is separated by a line starting with `#`.
+- Every following line represents a path `v1,v2,...` of weight `w` in the following format:
+  `w: [(v1, v2), (v2, v3), (v3, v4), ...]`.
+
+### Inexact MFD
+
+This tool supports inexact flow decompositions, where the input graphs are not flow networks anymore but
+DAGs with intervals for every edge. An inexact flow decomposition is a flow decomposition of a feasible flow
+in these intervals.
+
+- Use `--inexact` for inexact MFDs.
+- Note that the input FILE must have edges of the form `u v l r`, describing edges from vertex `u` to `v` with interval `[l,r]`.
+- Note that the input FILE is not allowed to have subpath constraints with inexact MFDs.
+
+### Subpath constraints
+
+This tool supports subpath constraints, i.e. given subpaths `S`, it  can find the minimum flow decomposition given the restriction
+that every path in `S` is a subpath of some weighted path in the MFD.
 
 ```
-pip3 install gurobipy
+The rest is TODO.
 ```
-
-Also, it requires a few extra Python libraries:
-
-  - itertools
-  - more_itertools
-  - math
-  - os 
-  - networkx 
-
-# Run
-
-To run the formulation, use 'python' to execute the 'mfd_optimization.py' file.
-
-As an example you can try:
-
-`python ./mfd_optimization/mfd_optimization.py -i ./example_inputs/example.graph -safe ./example_inputs/example.paths -o ./example_inputs/results.path`
-
-## Input
-
-- The input is a file containing a sequence of (directed) acyclic flow graphs separated by lines starting with `#`.
-- The first line of each flow graph contains the number of vertices of the graph, after this every flow edge from vertex
-`u` to  `v` carrying `f` flow is represented in a separated line in the format `u v f`.
-- Vertices must be integers following a topological order of the graph.
-- An example of such a format can be found in `./example_inputs/example.graph`.
-
-## Safe 
-
-- The safe file is an auxiliary file containining safe paths for each corresponding graph in the input file.
-- The first element of each line is '-1' and the following elements are the vertices creating such path.
-- Vertices must be integers following a topological order of the graph.
-- An example of such a format can be found in `./example_inputs/example.paths`.
-
-## Output
-
-- The output is a file containing a sequence of paths separated by lines starting with `#` (one per flow
-graph in the input).
-- Each line contains the weight associated and the content of a path corresponding sequence of vertices.
-- An example of such a format can be found in `./example_inputs/example.out`.
-
-## Parameters
-
-- `-i <path to input file>`. Mandatory.
-- `-o <path to locate output>`. Mandatory.
-- `-safe <path to safe file>`. Mandatory.
-
-Additional Parameters (optional)
-- `-stats` Output stats to file <output>.stats
-- `-t <n>` Use n threads for the Gurobi solver; use 0 for all threads (default 0).
-- `-ilptb <n>` Maximum time (in seconds) that the ilp solver is allowed to take when computing safe paths for one flow graph.
-If the solver takes more than n seconds, then safe for (all) flow decompositions is reported instead.
-- `-uef` Uses excess flow to save ILP calls.
-- `-uy2v` Use Y2V contraction on the flow graphs to reduce the ILP size.
-- `-s/es/rs/ess/esl/rss/rsl {scan, bin_search, exp_search, rep_exp_search}` When running the two-finger algorithm applied
-the specified strategy to extend/reduce the current safe interval.
-- `-st/est/rst <n>` When running the two-finger algorithm run the `small strategy` when the search space is less than n
-and the `large strategy` otherwise.
-- `-ugtd/-ugbu` Run a group testing algorithm (top down or bottom up) instead of two-finger.
-

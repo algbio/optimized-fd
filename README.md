@@ -22,7 +22,9 @@ MFD-optimized is an upgraded tool for MFD using integer linear programming by im
   - Networkx (version 2.4)
 
 ### Practical MPC
-```TODO```
+  - Tool which finds maximum (weighted) path covers of DAGS.
+  - Compile the fork in [./src/MPC](src/MPC).
+  - For more information, see [their GitHub repository](https://github.com/algbio/PerformanceMPC).
 
 ## Run
 

@@ -185,8 +185,8 @@ class Mfd:
 	"""
 	Solves the ILP with a given set of path weights.
 	"""
-	def solve_given_weights(self, path_weights, path_constraints=[], time_budget=float('inf')):
-		model, _ = self.ilp_model_weighted(path_weights, path_constraints, time_budget)
+	def solve_given_weights(self, path_weights, time_budget=float('inf')):
+		model, _ = self.ilp_model_weighted(path_weights, time_budget)
 		model.optimize()
 		self.runtime += model.runtime
 		self.model_status = model.status
@@ -268,13 +268,11 @@ class Mfd:
 	This gives an optimal solutions if the weights appear in the optimal
 	solution.
 	"""
-	def ilp_model_weighted(self, weight_set, path_constraints, time_budget):
+	def ilp_model_weighted(self, weight_set, time_budget):
 		size = len(weight_set)
 
 		# create index set
 		T = [(u, v, i, k) for (u, v, i) in self.G.edges(keys=True) for k in range(size)]
-		PC = [(k, j) for k in range(size) for j in range(len(path_constraints))]
-		SC = list(set([(u, v, i, k) for p in path_constraints for (u, v, i) in p[0] for k in range(size)]))
 
 		model = gp.Model('MFD_weights')
 		model.setParam('LogToConsole', 0)
@@ -283,8 +281,6 @@ class Mfd:
 
 		# Create variables
 		x = model.addVars(T, vtype=GRB.INTEGER, name='x', lb=0) # path indicators
-		r = model.addVars(PC, vtype=GRB.BINARY, name='r') # path constraint indicators
-		is_pos = model.addVars(SC, vtype=GRB.BINARY, name='is_pos') # sign of x variables of subpath constraints
 
 		# Objective function: minimise number of paths
 		model.setObjective(sum(x[u, v, i, k] for k in range(size) for s in self.sources for (u, v, i) in self.G.out_edges(s, keys=True)), GRB.MINIMIZE)
@@ -300,18 +296,6 @@ class Mfd:
 			for v in self.G.nodes:
 				if v not in self.sources and v not in self.sinks:
 					model.addConstr(sum(x[v, w, i, k] for _, w, i in self.G.out_edges(v, keys=True)) - sum(x[u, v, i, k] for u, _, i in self.G.in_edges(v, keys=True)) == 0)
-
-		# signs of subpath constraints edge indicators
-		for (u, v, i, k) in SC:
-			model.addConstr((is_pos[u, v, i, k] == 0) >> (x[u, v, i, k] == 0))
-			model.addConstr((is_pos[u, v, i, k] == 1) >> (x[u, v, i, k] >= 1))
-
-		# pre-defined path constraints TODO: Does not work
-		for j, p in enumerate(path_constraints):
-			print("Subpath constraints do not work with the weighted ILP!")
-			model.addConstr(sum(r[k, j] for k in range(size)) >= 1)
-			for k in range(size):
-				model.addConstr(sum(is_pos[u, v, i, k] for u, v, i in p[0]) >= p[1] * r[k, j])
 
 		return model, x
 
@@ -1018,7 +1002,7 @@ def pipeline(graph, path_constraints=[], heuristic_solution=None, is_inexact=Fal
 	return mfd
 
 # Approximation pipeline
-def approx_pipeline(graph, path_constraints=[]):
+def approx_pipeline(graph):
 	global trivial_occur
 	mngraph_out_contraction, mngraph_in_contraction, trivial_paths, contracted_path_constraints, _, _ = y_to_v(graph, path_constraints=path_constraints)
 	mfd = Mfd(mngraph_in_contraction, number_of_contracted_paths=len(trivial_paths))
@@ -1037,7 +1021,7 @@ def approx_pipeline(graph, path_constraints=[]):
 			path_weights.add(f[0])
 	path_weights = list(path_weights)
 
-	status = mfd.solve_given_weights(path_weights, path_constraints=contracted_path_constraints, time_budget=30*60)
+	status = mfd.solve_given_weights(path_weights, time_budget=30*60)
 	if status == GRB.TIME_LIMIT:
 		print("ILP Approx time limit.")
 		return mfd
@@ -1153,7 +1137,9 @@ if __name__ == '__main__':
 	for i, (graph, subpaths) in enumerate(graphs):
 		print("ITERATION:", i)
 		hs = heuristic_solutions[i] if args.heuristic else None
-		mfd = approx_pipeline(graph, path_constraints=subpaths) if args.approx else pipeline(graph, path_constraints=subpaths, heuristic_solution=hs, is_inexact=not args.exact)
+		if args.approx and len(subpaths) > 0:
+			print("Note: subpath constraints are not supported with --approx option.")
+		mfd = approx_pipeline(graph) if args.approx else pipeline(graph, path_constraints=subpaths, heuristic_solution=hs, is_inexact=not args.exact)
 		num_paths = 0 if mfd.model_status == GRB.TIME_LIMIT else mfd.k + mfd.number_of_contracted_paths
 		number_of_paths.append(num_paths)
 		runtimes.append(mfd.runtime)

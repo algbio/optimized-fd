@@ -248,6 +248,7 @@ class Mfd:
 		# pre-defined path constraints
 		for j, p in enumerate(path_constraints):
 			model.addConstr(sum(r[k, j] for k in range(size)) >= 1)
+			#model.addConstr(sum(w[k] * r[k, j] for k in range(size)) >= p[2])
 			for k in range(size):
 				model.addConstr(sum(x[u, v, i, k] for u, v, i in p[0]) >= p[1] * r[k, j])
 
@@ -1073,7 +1074,7 @@ def read_input_graphs(graph_file, exact_flow):
 				parts = e.split()
 				if sp:
 					subpath = list()
-					for i in range(len(parts)-2):
+					for i in range(len(parts)-1):
 						subpath.append((int(parts[i]), int(parts[i+1])))
 					subpaths.append(subpath)
 				else:

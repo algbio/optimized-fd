@@ -62,6 +62,15 @@ in these intervals.
 This tool supports subpath constraints, i.e. given subpaths `S`, it  can find the minimum flow decomposition given the restriction
 that every path in `S` is a subpath of some weighted path in the MFD.
 
-```
-The rest is TODO.
-```
+- Use by including a line `subpaths` in the input FILE, after all edges, proceeded by lines of paths in the following format: `v1, v2, v3, ...`.
+- Note that it can not be used with inexact flows.
+
+### Weighted MFD
+
+Also included is an ILP model to solve a slightly modified MFD variant, which assumes that the path weights come from a set `W`.
+As of now, the set is defined to be all powers of two and includes the flow values of the input graph. This yields an approximation
+of the optimal solution of ratio log2(largest flow value).
+
+- Use `--approx` for the weighted MFD.
+- Not compatible with subpath constraints.
+- So far we do not print the paths, only the resulting flows which describe the number of paths passing through each edge of a certain weight.

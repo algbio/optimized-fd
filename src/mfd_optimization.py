@@ -196,7 +196,32 @@ class Mfd:
 			self.k = model.getObjective().getValue()
 			self.runtime = model.runtime
 
-			# TODO: Reconstruct paths from the model
+			x = {}
+			for (u, v, i) in self.G.edges(keys=True):
+				for j, w in enumerate(path_weights):
+					x[(u, v, i, w)] = round(model.getVarByName(f'x[{u},{v},{i},{j}]').x)
+
+			def recover_path(u, v, i, w):
+				assert x[(u, v, i, w)] > 0
+				x[(u, v, i, w)] -= 1
+				self.paths[-1].append((u, v, i))
+
+				while self.G.out_degree(v) > 0:
+					for (u_, v_, i_) in self.G.edges(v, keys=True):
+						if x[(u_, v_, i_, w)] > 0:
+							u, v, i = u_, v_, i_
+							break
+					x[(u, v, i, w)] -= 1
+					self.paths[-1].append((u, v, i))
+
+
+			for w in path_weights:
+				for s in self.sources:
+					for (s, s_out, i) in self.G.edges(s, keys=True):
+						while x[(s, s_out, i, w)] > 0:
+							self.weights.append(w)
+							self.paths.append([])
+							recover_path(s, s_out, i, w)
 
 		return model.status
 	
@@ -759,36 +784,6 @@ def y_to_v(ngraph, path_constraints=[], heuristic_paths=[], heuristic_weights=[]
 					in_trees[root] = leaf_edges
 		return in_trees, contracted, my_leaves, my_root
 
-	def get_expanded_path(path, graph, original_graph, out_contraction_graph):
-
-		out_contraction_path = list()
-
-		for u, v, i in path:
-			root = v
-			v, i = graph.edges[u, v, i]['succ']
-
-			expanded_edge = list()
-			while v != root:
-				expanded_edge.append((u, v, i))
-				u, v, i = list(out_contraction_graph.out_edges(v, keys=True))[0]
-
-			expanded_edge.append((u, v, i))
-			out_contraction_path += list(expanded_edge)
-
-		original_path = list()
-
-		for u, v, i in out_contraction_path:
-			root = u
-			u = out_contraction_graph.edges[u, v, i]['pred']
-			expanded_edge = list()
-			while u != root:
-				expanded_edge.append((u, v, i))
-				u, v, i = list(original_graph.in_edges(u, keys=True))[0]
-			expanded_edge.append((u, v, i))
-			original_path += list(reversed(expanded_edge))
-
-		return original_path
-
 	out_trees, contracted_out, my_leaves_out, my_root_out = get_out_trees(ngraph)
 
 	mngraph_out_contraction = nx.MultiDiGraph()
@@ -827,7 +822,7 @@ def y_to_v(ngraph, path_constraints=[], heuristic_paths=[], heuristic_weights=[]
 	for u, v, i, f in edges:
 		if mngraph_in_contraction.in_degree(u) == 0 and mngraph_in_contraction.out_degree(v) == 0:
 			if f[0] > 0:
-				trivial_paths.append(get_expanded_path([(u, v, i)], mngraph_in_contraction, ngraph, mngraph_out_contraction))
+				trivial_paths.append((get_expanded_path([(u, v, i)], mngraph_in_contraction, ngraph, mngraph_out_contraction), f[0]))
 			mngraph_in_contraction.remove_edge(u, v, i)
 
 	# Contract given paths
@@ -898,10 +893,45 @@ def y_to_v(ngraph, path_constraints=[], heuristic_paths=[], heuristic_weights=[]
 
 	return mngraph_out_contraction, mngraph_in_contraction, trivial_paths, contracted_path_constraints, contracted_heuristic_paths, contracted_heuristic_weights
 
-def results_to_file(file, num_paths, times):
+def get_expanded_path(path, graph, original_graph, out_contraction_graph):
+
+	out_contraction_path = list()
+
+	for u, v, i in path:
+		root = v
+		v, i = graph.edges[u, v, i]['succ']
+
+		expanded_edge = list()
+		while v != root:
+			expanded_edge.append((u, v, i))
+			u, v, i = list(out_contraction_graph.out_edges(v, keys=True))[0]
+
+		expanded_edge.append((u, v, i))
+		out_contraction_path += list(expanded_edge)
+
+	original_path = list()
+
+	for u, v, i in out_contraction_path:
+		root = u
+		u = out_contraction_graph.edges[u, v, i]['pred']
+		expanded_edge = list()
+		while u != root:
+			expanded_edge.append((u, v))
+			u, v = list(original_graph.in_edges(u))[0]
+		expanded_edge.append((u, v))
+		original_path += list(reversed(expanded_edge))
+
+	return original_path
+
+def time_to_file(file, num_paths, times):
 	with open(file, 'w') as f:
 		for i in range(len(num_paths)):
 			f.write("{} {}\n".format(num_paths[i], times[i]))
+
+def results_to_file(file, paths, weights):
+	with open(file, 'w') as f:
+		for weight, path in zip(weights, paths):
+			f.write("{}: {}\n".format(weight, path))
 
 trivial_occur = 0
 lb_eq_ub = 0
@@ -913,7 +943,7 @@ num_of_edges_orig = 0
 num_of_edges_contracted = 0
 sol_length = 0
 # Main pipeline function
-def pipeline(graph, path_constraints=[], heuristic_solution=None, is_inexact=False):
+def pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_constraints=[], contracted_heuristic_weights=None, contracted_heuristic_paths=None, is_inexact=False):
 	global trivial_occur
 	global lb_eq_ub
 	global N
@@ -924,9 +954,6 @@ def pipeline(graph, path_constraints=[], heuristic_solution=None, is_inexact=Fal
 	global num_of_edges_orig
 	global num_of_edges_contracted
 	global sol_length
-	heuristic_weights, heuristic_paths = heuristic_solution if heuristic_solution else ([], [])
-	mngraph_out_contraction, mngraph_in_contraction, trivial_paths, contracted_path_constraints, contracted_heuristic_paths, contracted_heuristic_weights = y_to_v(graph, path_constraints=path_constraints, heuristic_paths=heuristic_paths, heuristic_weights=heuristic_weights)
-	#mngraph_out_contraction, mngraph_in_contraction, trivial_paths, contracted_path_constraints, contracted_heuristic_paths, contracted_heuristic_weights = graph, graph, [], path_constraints, heuristic_paths, heuristic_weights
 	mfd = Mfd(mngraph_in_contraction, number_of_contracted_paths=len(trivial_paths), heuristic_paths=contracted_heuristic_paths, heuristic_weights=contracted_heuristic_weights)
 	N += mngraph_in_contraction.number_of_nodes()
 	M += mngraph_in_contraction.number_of_edges()
@@ -941,7 +968,7 @@ def pipeline(graph, path_constraints=[], heuristic_solution=None, is_inexact=Fal
 	
 	can_fail = is_inexact or len(contracted_path_constraints) > 0
 	
-	if heuristic_solution:
+	if contracted_heuristic_paths:
 		assert mfd.find_safe_paths()
 		SAFE_PATHS += mfd.safe_paths_amount
 
@@ -961,22 +988,12 @@ def pipeline(graph, path_constraints=[], heuristic_solution=None, is_inexact=Fal
 						longest_safe_path_of_edge[u,v,i] = (window[1] - window[0], (ip, window[0], window[1]))  
 
 		safe_antichain = edge_mwa_safe_paths(mfd, longest_safe_path_of_edge)
-		#safe_antichain = mlips(mfd)
 	else:
 		safe_antichain = []
 
 
 	found_sol_or_time_limit = mfd.mfd_algorithm(safe_paths=safe_antichain, path_constraints=contracted_path_constraints, time_budget=30*60)
 	assert found_sol_or_time_limit or can_fail
-
-	#print("DEBUG:")
-	#print("Trivial paths:", len(trivial_paths))
-	#print("Non trivial paths:")
-	#for (w, p) in zip(mfd.weights, mfd.paths):
-	#	print("Weight: {}, path: {}".format(w, p))
-	#print("Contracted subpath constraints:")
-	#for p in contracted_path_constraints:
-	#	print(p)
 
 	if mfd.opt_is_greedy:
 		lb_eq_ub += 1
@@ -1002,9 +1019,8 @@ def pipeline(graph, path_constraints=[], heuristic_solution=None, is_inexact=Fal
 	return mfd
 
 # Approximation pipeline
-def approx_pipeline(graph):
+def approx_pipeline(graph, mngraph_in_contraction, trivial_paths):
 	global trivial_occur
-	mngraph_out_contraction, mngraph_in_contraction, trivial_paths, contracted_path_constraints, _, _ = y_to_v(graph, path_constraints=path_constraints)
 	mfd = Mfd(mngraph_in_contraction, number_of_contracted_paths=len(trivial_paths))
 	if mngraph_in_contraction.number_of_edges() == 0:
 		print("Trivially decomposable to {} paths.".format(len(trivial_paths)))
@@ -1059,6 +1075,9 @@ def read_input_graphs(graph_file, exact_flow):
 				if sp:
 					subpath = list()
 					for i in range(len(parts)-1):
+						# Experimental data looks like this
+						if parts[i+1] == '1.0':
+							continue
 						subpath.append((int(parts[i]), int(parts[i+1])))
 					subpaths.append(subpath)
 				else:
@@ -1097,6 +1116,20 @@ def read_truth(truth_file):
 
 	return solutions
 
+def check_solution(graph, paths, weights):
+	flow_from_paths = {}
+	for (u, v) in graph.edges():
+		flow_from_paths[u, v] = 0
+
+	for weight, path in zip(weights, paths):
+		for e in path:
+			flow_from_paths[e] += weight
+
+	for (u, v, f) in graph.edges(data='f'):
+		if flow_from_paths[(u, v)] < f[0] or flow_from_paths[(u, v)] > f[1]:
+			return False
+
+	return True
 
 if __name__ == '__main__':
 
@@ -1122,6 +1155,10 @@ if __name__ == '__main__':
 	parser.add_argument('--no-approx', help='Do not use approximation (default)', dest='approx', action='store_false')
 	parser.set_defaults(approx=False)
 
+	parser.add_argument('--verbose', help='Use verbose output', action='store_true')
+	parser.add_argument('--no-verbose', help='Do not use verbose output (default)', dest='verbose', action='store_false')
+	parser.set_defaults(verbose=False)
+
 	args = parser.parse_args()
 
 	threads = os.cpu_count()
@@ -1133,25 +1170,44 @@ if __name__ == '__main__':
 
 	timelimit = []
 	number_of_paths = []
+	paths = []
+	weights = []
 	runtimes = []
 	for i, (graph, subpaths) in enumerate(graphs):
-		print("ITERATION:", i)
+		print("Iteration:", i)
 		hs = heuristic_solutions[i] if args.heuristic else None
 		if args.approx and len(subpaths) > 0:
 			print("Note: subpath constraints are not supported with --approx option.")
-		mfd = approx_pipeline(graph) if args.approx else pipeline(graph, path_constraints=subpaths, heuristic_solution=hs, is_inexact=not args.exact)
+
+		heuristic_weights, heuristic_paths = hs if hs  else ([], [])
+		mngraph_out_contraction, mngraph_in_contraction, trivial_paths, contracted_path_constraints, contracted_heuristic_paths, contracted_heuristic_weights = y_to_v(graph, path_constraints=subpaths, heuristic_paths=heuristic_paths, heuristic_weights=heuristic_weights)
+		
+		mfd = approx_pipeline(graph, mngraph_in_contraction, trivial_paths) if args.approx else pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_constraints=contracted_path_constraints, contracted_heuristic_weights=contracted_heuristic_weights, contracted_heuristic_paths=contracted_heuristic_paths, is_inexact=not args.exact)
 		num_paths = 0 if mfd.model_status == GRB.TIME_LIMIT else mfd.k + mfd.number_of_contracted_paths
 		number_of_paths.append(num_paths)
 		runtimes.append(mfd.runtime)
+		paths.append([get_expanded_path(path, mngraph_in_contraction, graph, mngraph_out_contraction) for path in mfd.paths])
+		weights.append(mfd.weights)
+		for (path, weight) in trivial_paths:
+			paths[-1].append(path)
+			weights[-1].append(round(weight))
 
-	output_file = ''.join([args.output,'.time'])
-	results_to_file(output_file, number_of_paths, runtimes)
-	print("Timelimited:", timelimit)
-	print("Trivially decomposed:", trivial_occur)
-	print("Lower bound equals upper bound:", lb_eq_ub)
-	print("Path variables set to one by safety: {}/{}".format(x_set_to_one, x_total))
-	print("Number of edges in the MFD solution:", sol_length)
-	print("Total sum of n and m:", N, M)
-	print("Number of safe paths:", SAFE_PATHS)
-	print("Number of edges in the original graph:", num_of_edges_orig)
-	print("Number of edges in the contracted graph:", num_of_edges_contracted)
+		if check_solution(graph, paths[-1], weights[-1]):
+			print("Solution of {} paths is a feasible flow decomposition.".format(num_paths))
+		else:
+			print("Error: solution of {} paths is NOT a feasible flow decomposition!.".format(num_paths))
+
+	time_file = ''.join([args.output,'.time'])
+	output_file = args.output
+	time_to_file(time_file, number_of_paths, runtimes)
+	results_to_file(output_file, paths, weights)
+	print("Number of timelimited graphs:", timelimit)
+	if args.verbose:
+		print("Number of trivially decomposed graphs:", trivial_occur)
+		print("Lower bound equals upper bound:", lb_eq_ub)
+		print("Path variables set to one by safety: {}/{}".format(x_set_to_one, x_total))
+		print("Number of edges in the MFD solution:", sol_length)
+		print("Total sum of n and m:", N, M)
+		print("Number of safe paths:", SAFE_PATHS)
+		print("Number of edges in the original graph:", num_of_edges_orig)
+		print("Number of edges in the contracted graph:", num_of_edges_contracted)

@@ -23,13 +23,13 @@ echo "Separating graphs.."
 echo "> python3 ./separateGraphs.py -i "$file""
 python3 ./separateGraphs.py -i "$file"
 
-echo "Running IFD solver heuristic.."
-echo "> ./run_tests_heuristic.sh '$directory' '${current_dir}/tests_heuristic.out'"
-./run_tests_heuristic.sh "$directory" "${current_dir}/tests_heuristic.out"
-
-echo "Running standard ILP.."
-echo "> ./run_tests_standard.sh '$directory' '${current_dir}/tests_standard.out'"
-./run_tests_standard.sh "$directory" "${current_dir}/tests_standard.out"
+#echo "Running IFD solver heuristic.."
+#echo "> ./run_tests_heuristic.sh '$directory' '${current_dir}/tests_heuristic.out'"
+#./run_tests_heuristic.sh "$directory" "${current_dir}/tests_heuristic.out"
+#
+#echo "Running standard ILP.."
+#echo "> ./run_tests_standard.sh '$directory' '${current_dir}/tests_standard.out'"
+#./run_tests_standard.sh "$directory" "${current_dir}/tests_standard.out"
 
 echo "Running optimized ILP.."
 echo "> ./run_tests_optimized.sh '$directory' '${current_dir}/tests_optimized.out'"

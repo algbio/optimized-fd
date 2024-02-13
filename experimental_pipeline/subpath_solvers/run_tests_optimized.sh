@@ -22,7 +22,7 @@ if [ -e "$output_k_and_time" ]; then
 fi
 
 # Check if the Python script exists
-python_script="../../mfd_optimization/mfd_optimization_recomb.py"
+python_script="../../src/mfd_optimization.py"
 if [ ! -f "$python_script" ]; then
     echo "Python script '$python_script' does not exist."
     exit 1
@@ -48,7 +48,7 @@ for file in "$directory"/*; do
 		./sol_from_heuristic_to_optimized_ILP_readable.sh $orig_heuristic_file $heuristic_file
 
         # Run the Python script with the file as input and extract the runtime
-		run_stdout=$( { time python3 "$python_script" -i "$file" -o "$output_file" --heuristic "$heuristic_file"; } 2>&1)
+		run_stdout=$( { time python3 "$python_script" -i "$file" -o "$output_file" --heuristic "$heuristic_file" --verbose; } 2>&1)
         runtime=$(echo "$run_stdout" | grep "real" | awk '{print $2}')
 
 		echo "$run_stdout"

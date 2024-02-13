@@ -27,7 +27,7 @@ while IFS= read -r line; do
     # Extracting values using awk and transforming them
     path=$(echo "$line" | awk '{print $1}')
 	vertices=$(echo "$line" | awk -F '[[, ]' '{ for (i = 3; i < NF; i++) printf $i OFS } { print substr($NF, 1, length($NF)-1) }')
-	echo "$vertices"
+	#echo "$vertices"
     vertices_array=($vertices)
     num_vertices=${#vertices_array[@]}
 

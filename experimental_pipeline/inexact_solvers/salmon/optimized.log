@@ -1,7 +1,0 @@
-Average runtime: .57 seconds
-Lower bound was equal to upper bound for 10942 out of 40870 runs.
-Overall, 98462 path indicator variables were set to one, out of totally 826705.
-Number of edges in the original graphs: 355526.
-Number of edges in the contracted graphs: 166136.
-Number of edges in the MFD solution: 210471.
-All runs finished.

@@ -968,6 +968,7 @@ def pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_const
 	
 	can_fail = is_inexact or len(contracted_path_constraints) > 0
 	
+	safe_paths_as_path_constraints = []
 	if contracted_heuristic_paths:
 		assert mfd.find_safe_paths()
 		SAFE_PATHS += mfd.safe_paths_amount
@@ -988,11 +989,24 @@ def pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_const
 						longest_safe_path_of_edge[u,v,i] = (window[1] - window[0], (ip, window[0], window[1]))  
 
 		safe_antichain = edge_mwa_safe_paths(mfd, longest_safe_path_of_edge)
+
+		# Define safe paths as path constraints
+		for j in range(len(mfd.safe_paths)):
+			for (L, R) in mfd.safe_paths[j]:
+				current_safe_path = mfd.heuristic_paths[j][L:R]
+				safe_paths_as_path_constraints.append((current_safe_path, R-L))
+
 	else:
 		safe_antichain = []
 
+	#print("Debug:")
+	#print("Contracted path constraints:", contracted_path_constraints)
+	#print("Safe paths:", mfd.safe_paths)
+	#print("Heuristic solution:", mfd.heuristic_paths)
+	#print("Lengths are equal:", len(mfd.safe_paths), len(mfd.heuristic_paths))
 
-	found_sol_or_time_limit = mfd.mfd_algorithm(safe_paths=safe_antichain, path_constraints=contracted_path_constraints, time_budget=30*60)
+	#found_sol_or_time_limit = mfd.mfd_algorithm(safe_paths=safe_antichain, path_constraints=contracted_path_constraints, time_budget=30*60)
+	found_sol_or_time_limit = mfd.mfd_algorithm(safe_paths=safe_antichain, path_constraints=safe_paths_as_path_constraints, time_budget=30*60)
 	assert found_sol_or_time_limit or can_fail
 
 	if mfd.opt_is_greedy:

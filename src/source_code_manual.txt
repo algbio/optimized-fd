@@ -1,0 +1,78 @@
+Optimized FD tool manual
+
+This is a manual on the python code mfd_optimization.py.
+Note: Some information will be left out, if it's self explanatory in the code
+(such as self.max_flow_value in the MfD class, for example).
+
+FD = flow decomposition, MFD = minimum flow decomposition (optimal fd)
+
+Mfd class:
+	Defines a flow decomposition instance and contains several information,
+	such as data used for the ILP optimization or the optimal solution after
+	running the ILP. In this class, all paths are given with respect to the
+	Y-to-V contracted graph.
+
+	Graph data:
+		self.G: networkx directed multigaph (in the code, it's Y-to-V
+			contracted)
+		self.number_of_contracted_paths: If the original graph (before Y-to-V)
+			contains paths from s to t, that get contracted to a single edge,
+			then the Y-to-V rouine removes them from the contrated graph. This
+			variable stores the number of such edges, because they each
+			contribute to one path in the MFD solution.
+
+	Mfd data: Optimal solution of the FD instance. This is only filled after
+	calling self.solve().
+		self.k: Number of paths in the MFD.
+		self.model_status: Return value of the gurobi solver. See: https://www.gurobi.com/documentation/current/refman/optimization_status_codes.html
+		self.opt_is_greedy: Boolean, whether the heuristic solution was already
+			optimal.
+	
+	Heuristic solution: An FD read from input.
+		self.heurisic_k: Number of paths in the heuristic solution
+		self.safe_paths: Contains for every path p in the heuristic solution a
+			list of intervals [L, R), meaning that p[L:R] in python notation
+			is safe (i.e. contained in every fd)
+		self.safe_paths_amount: number of safe paths
+	
+	self.mfd_algorithm(): Main function to call to calculate the ILP. It finds
+		lower and upper bounds based on the optimizations used (safe paths,
+		heuristic fd). The value "self.G.number_of_edges() - self.G.number_of_nodes() + 2"
+		for the upper bound is a general lemma about fds: Every flow can be
+		decomposed into that many paths. This routine calls self.solve(),
+		iterating through the possible k's (solution size).
+	
+	self.solve(): Given a k, this method defines the model via self.ilp_basic_model(),
+		calls gurobi to solve it and stores the solution in the class.
+	self.solve_given_weights(): Similar as above, but for the weighted version.
+
+	self.ilp_basic_model(): Defines the ILP model
+	self.ilp_model_weighted(): Similar as above, but for the weighted version.
+
+	self.find_safe_paths(): finds safe paths in the given heuristic solution.
+
+mlips(): Read "minimum length independent path set". Ignore for now,
+	this method is not in use at the moment.
+
+edge_mwa_safe_paths(): Given weights for every edge (the parameter
+	longest_safe_path_of_edge), this methods calculates a maximum weight
+	edge antichain. Since it uses an external tool "./mwa" (that needs to be
+	in your current directory), it translates the input and output for/of the
+	tool.
+
+y_to_v(): Calculates the Y-to-V contraction of a graph. It also contracts paths
+	that are given in the input (heuristic paths or subpath constraints).
+
+get_expanded_path(): Given a path for the Y-to-V contracted graph, it
+	calculates the unqiue path expansion in the original graph.
+
+pipeline(): Runs everything, after the graph has been Y-to-V contracted. It
+	calculates the edge weights based on the safe paths for the max weight
+	antichain, runs self.mfd_algorithm() and stores statistics for verbose
+	output.
+approx_pipeline(): Same as above, but for the weighted version.
+
+read_truth(): Not in use at the moment. Used for experiments, if we compare our
+	solution to a given one that captures biological correctness.
+
+check_solution(): Test if our calculated MFD is indeed a correct FD.

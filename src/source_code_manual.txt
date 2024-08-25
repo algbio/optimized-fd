@@ -6,6 +6,16 @@ Note: Some information will be left out, if it's self explanatory in the code
 
 FD = flow decomposition, MFD = minimum flow decomposition (optimal fd)
 
+How to run the tool:
+	To the safe path optimization, one needs to have a file with a heuristic
+	flow decomposition, and have the C++ tool 'mwa' in the current directory.
+	A heuristic flow decompoition can be found with a heuristic solver (for
+	example catfish), and the output can be translated for this tool via
+	'sol_from_catfish_to_optimized_ILP_readable.sh' in the experimental_pipeline/exact_solvers/
+	directory.
+	To get the 'mwa' tool, compile in src/MPC and move the binary to the
+	directory that you run this tool from.
+
 Mfd class:
 	Defines a flow decomposition instance and contains several information,
 	such as data used for the ILP optimization or the optimal solution after

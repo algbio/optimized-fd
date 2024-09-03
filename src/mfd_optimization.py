@@ -225,6 +225,30 @@ class Mfd:
 
 		return model.status
 	
+	"""
+	Check if there is a path from 'start_node' to 'target_node' in the graph using DFS.
+	"""
+	def is_reachable(self, start_node, target_node):
+		
+		visited_nodes = set() 
+
+		def dfs(current_node):
+			if current_node in visited_nodes:
+				return False  # to avoid cycles
+			
+			visited_nodes.add(current_node) 
+			
+			if current_node == target_node:
+				return True
+
+			for _, next_node, _ in self.G.out_edges(current_node, keys=True):
+				if dfs(next_node): 
+					return True
+			
+			return False  
+
+		return dfs(start_node)
+
 
 	"""
 	Build basic gurobi ILP model.
@@ -248,6 +272,31 @@ class Mfd:
 
 		# Objective function: minimise number of paths
 		#model.setObjective(sum(x[u, v, i, k] for k in range(size) for s in self.sources for (u, v, i) in self.G.out_edges(s, keys=True)), GRB.MINIMIZE)
+
+		# reachability constraints
+		for path_index_1, path1 in enumerate(safe_paths):
+			if not path1:  # If path1 is empty, skip it
+				continue
+			
+			# path1 has the following structure: (index_path, L, R)
+			idx1, l1, r1 = path1
+			# the path can be accessed via self.heuristic_paths[idx1][l1:r1]
+			last_edge_of_path1 = self.heuristic_paths[idx1][r1-1]
+			# last_edge_of_path1 has the following structure: (u, v, j) -> vertex u, vertex v. jth parallel edge from u to v
+			last_node_of_path1 = last_edge_of_path1[1] 
+
+			for path_index_2, path2 in enumerate(safe_paths):
+				if path_index_1 == path_index_2:  
+					continue
+				
+				idx2, l2, r2 = path2
+				for edge_in_path2 in self.heuristic_paths[idx2][l2:r2]:
+					start_node_of_edge2 = edge_in_path2[0] 
+
+					#  if last_node_of_path1 can reach start_node_of_edge2
+					if not self.is_reachable(last_node_of_path1, start_node_of_edge2):
+						model.addConstr(x[edge_in_path2[0], edge_in_path2[1], edge_in_path2[2], path_index_2] == 0)
+
 
 		# flow conservation
 		for k in range(size):

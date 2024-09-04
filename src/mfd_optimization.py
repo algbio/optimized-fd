@@ -274,29 +274,31 @@ class Mfd:
 		#model.setObjective(sum(x[u, v, i, k] for k in range(size) for s in self.sources for (u, v, i) in self.G.out_edges(s, keys=True)), GRB.MINIMIZE)
 
 		# reachability constraints
-		for path_index_1, path1 in enumerate(safe_paths):
-			if not path1:  # If path1 is empty, skip it
+		for path_index, path in enumerate(safe_paths):
+			if not path:  # if path is empty, skip it
 				continue
 			
-			# path1 has the following structure: (index_path, L, R)
-			idx1, l1, r1 = path1
-			# the path can be accessed via self.heuristic_paths[idx1][l1:r1]
-			last_edge_of_path1 = self.heuristic_paths[idx1][r1-1]
-			# last_edge_of_path1 has the following structure: (u, v, j) -> vertex u, vertex v. jth parallel edge from u to v
-			last_node_of_path1 = last_edge_of_path1[1] 
+			# path has the following structure: (index_path, L, R)
+			idx, l, r = path
 
-			for path_index_2, path2 in enumerate(safe_paths):
-				if path_index_1 == path_index_2:  
+			# the path can be accessed via self.heuristic_paths[idx1][l1:r1]
+			first_edge_of_path = self.heuristic_paths[idx][l]
+			last_edge_of_path = self.heuristic_paths[idx][r-1]
+			# edge had the following structure; (u, v, j) (vertex u to vertex v, j-th parallel edge from u to v)
+			
+			first_node_of_path = first_edge_of_path[0]  
+			last_node_of_path = last_edge_of_path[1]
+			
+			for edge in self.G.edges(keys=True):  
+				if edge in self.heuristic_paths[idx][l:r]:  # if edge is in the current path, skip it
 					continue
 				
-				idx2, l2, r2 = path2
-				for edge_in_path2 in self.heuristic_paths[idx2][l2:r2]:
-					start_node_of_edge2 = edge_in_path2[0] 
-
-					#  if last_node_of_path1 can reach start_node_of_edge2
-					if not self.is_reachable(last_node_of_path1, start_node_of_edge2):
-						model.addConstr(x[edge_in_path2[0], edge_in_path2[1], edge_in_path2[2], path_index_2] == 0)
-
+				start_node_of_edge = edge[0]
+				end_node_of_edge = edge[1]
+				
+				# if the edge cannot reach the first node of the path and the last node of the path cannot reach the edge
+				if not (self.is_reachable(end_node_of_edge, first_node_of_path) or self.is_reachable(last_node_of_path, start_node_of_edge)):
+					model.addConstr(x[edge[0], edge[1], edge[2], path_index] == 0)
 
 		# flow conservation
 		for k in range(size):

@@ -135,7 +135,7 @@ class Mfd:
 	"""
 	Main algorithm to compute the minimum flow decomposition with ILP.
 	"""
-	def mfd_algorithm(self, safe_paths=[], path_constraints=[], time_budget=float('inf')):
+	def mfd_algorithm(self, longest_safe_path_of_edge, safe_paths=[], path_constraints=[], time_budget=float('inf')):
 		if self.min_flow_value == 0:
 			lower_bound = max(1, len(safe_paths))
 		else:
@@ -151,7 +151,7 @@ class Mfd:
 			
 
 		for i in range(lower_bound,upper_bound+1):
-			self.model_status = self.solve(safe_paths, path_constraints, i, time_budget)
+			self.model_status = self.solve(safe_paths, path_constraints, i, time_budget, longest_safe_path_of_edge)
 			if self.model_status == GRB.OPTIMAL or self.model_status == GRB.TIME_LIMIT:
 				return True
 		return False
@@ -159,8 +159,8 @@ class Mfd:
 	"""
 	Solves the ILP given by the basic model.
 	"""
-	def solve(self, safe_paths, path_constraints, k, time_budget):
-		model, _, _, _ = self.ilp_basic_model(safe_paths, path_constraints, k, time_budget)
+	def solve(self, safe_paths, path_constraints, k, time_budget, longest_safe_path_of_edge):
+		model, _, _, _ = self.ilp_basic_model(safe_paths, path_constraints, k, time_budget, longest_safe_path_of_edge)
 		model.optimize()
 		self.runtime += model.runtime
 
@@ -250,10 +250,40 @@ class Mfd:
 		return dfs(start_node)
 
 
+	def check_reachability_cpp(self, graph_input, control_reachability, model, x):
+		reachability_input = io.StringIO()
+
+		reachability_input.write(f"{len(control_reachability)}\n")
+		for cr_tuple in control_reachability:
+			reachability_input.write(f"{cr_tuple[0]} {cr_tuple[1]} {cr_tuple[2]} {cr_tuple[3]} {cr_tuple[4]}\n")
+
+		reachability_input.write(graph_input.getvalue())
+
+		res = subprocess.run(["./compute_reach"], input=reachability_input.getvalue(), text=True, capture_output=True)
+
+		if res.stdout != '':
+			result_lines = res.stdout.strip().split('\n')
+
+			for i in range(0, len(result_lines), 2):
+				first_line = result_lines[i]
+				first_parts = first_line.split(',')
+
+				second_line = result_lines[i + 1]
+				second_parts = second_line.split(',')
+
+				# this parts array has such structure: start_node_of_edge, end_node_of_edge, edge_index, path_index, reachability_result
+				# reachability_result is equal to 1 or 0
+
+				if (first_parts[4] == 0 and second_parts[4] == 0):
+					model.addConstr(x[first_parts[0], first_parts[1], first_parts[2], first_parts[3]] == 0)
+		else:
+			print("Error occurred in C++ process:", res.stderr)
+
+
 	"""
 	Build basic gurobi ILP model.
 	"""
-	def ilp_basic_model(self, safe_paths, path_constraints, size, time_budget):
+	def ilp_basic_model(self, safe_paths, path_constraints, size, time_budget, longest_safe_path_of_edge):
 		# create index sets
 		T = [(u, v, i, k) for (u, v, i) in self.G.edges(keys=True) for k in range(size)]
 		SC = list(range(size))
@@ -274,6 +304,8 @@ class Mfd:
 		#model.setObjective(sum(x[u, v, i, k] for k in range(size) for s in self.sources for (u, v, i) in self.G.out_edges(s, keys=True)), GRB.MINIMIZE)
 
 		# reachability constraints
+		control_reachability = []
+
 		for path_index, path in enumerate(safe_paths):
 			if not path:  # if path is empty, skip it
 				continue
@@ -297,9 +329,21 @@ class Mfd:
 				end_node_of_edge = edge[1]
 				
 				# if the edge cannot reach the first node of the path and the last node of the path cannot reach the edge
-				if not (self.is_reachable(end_node_of_edge, first_node_of_path) or self.is_reachable(last_node_of_path, start_node_of_edge)):
-					model.addConstr(x[edge[0], edge[1], edge[2], path_index] == 0)
+				# if not (self.is_reachable(end_node_of_edge, first_node_of_path) or self.is_reachable(last_node_of_path, start_node_of_edge)):
+				# 	model.addConstr(x[edge[0], edge[1], edge[2], path_index] == 0)
+				control_reachability.append((last_node_of_path , start_node_of_edge, edge[0], edge[1], edge[2], path_index))
+				control_reachability.append((end_node_of_edge  , first_node_of_path, edge[0], edge[1], edge[2], path_index))
 
+		N = self.G.number_of_nodes()
+		M = self.G.number_of_edges()
+		orig_N = N
+		orig_M = M
+
+		graph_input = io.StringIO()
+		graph_input, _, _ = creating_graph_input (graph_input, self, longest_safe_path_of_edge, N, M, orig_M, orig_N)
+
+		self.check_reachability_cpp(graph_input, control_reachability, model, x)
+				
 		# flow conservation
 		for k in range(size):
 			model.addConstr(sum(x[v, w, i, k] for v in self.sources for _, w, i in self.G.out_edges(v, keys=True)) == 1)
@@ -438,135 +482,19 @@ class Mfd:
 
 		return True
 
-# Calculates the maximum weight independent path set,
-# where the weight of a path is its length
-def mlips(mfd):
-	# Check if two safe paths are equal (they might live in different heuristic paths)
-	def are_equal(x, y):
-		if x[2] - x[1] != y[2] - y[1]:
-			return False
-
-		for i in range(x[2] - x[1]):
-			if mfd.heuristic_paths[x[0]][x[1] + i] != mfd.heuristic_paths[y[0]][y[1] + i]:
-				return False
-
-		return True
-
-	# Find all unique safe paths
-	length_one_safe_paths = {(u,v,i): True for (u,v,i) in mfd.G.edges(keys=True)}
-	safe_paths = []
-	for ip, path in enumerate(mfd.heuristic_paths):
-		for iw, window in enumerate(mfd.safe_paths[ip]):
-			for j in range(window[0], window[1]):
-				length_one_safe_paths[mfd.heuristic_paths[ip][j]] = False
-			is_unique = TrueA
-			for (l, (jp, L, R)) in safe_paths:
-				is_unique = is_unique and not are_equal((ip, window[0], window[1]), (jp, L, R))
-			if is_unique:
-				safe_paths.append((window[1] - window[0], (ip, window[0], window[1])))
-		for j, (u,v,i) in enumerate(path):
-			if length_one_safe_paths[u,v,i]:
-				safe_paths.append((1, (ip, j, j+1)))
-	
-	# Check whether two paths are independent (subpaths do not occur)
-	def independent_paths(p1, p2):
-		ip1, l1, r1 = p1
-		ip2, l2, r2 = p2
-
-		e1l = mfd.heuristic_paths[ip1][l1]
-		e1r = mfd.heuristic_paths[ip1][r1-1]
-		e2l = mfd.heuristic_paths[ip2][l2]
-		e2r = mfd.heuristic_paths[ip2][r2-1]
-
-		if e2l in nx.edge_dfs(mfd.G, e1r[1]):
-			# One comes after the other
-			return False
-
-		# The suffix of the left is the prefix of the right
-		found_first = -1
-		for i in range(l1, r1):
-			if found_first > -1:
-				if mfd.heuristic_paths[ip1][i] != mfd.heuristic_paths[ip2][i - found_first + l2]:
-					return True
-			else:
-				if mfd.heuristic_paths[ip1][i] == mfd.heuristic_paths[ip2][l2]:
-					found_first = i
-		return found_first == -1
-		
-
-	transitive_graph = nx.DiGraph()
-	transitive_graph.add_nodes_from(safe_paths)
-	for (ip1, l1, r1) in safe_paths:
-		for (ip2, l2, r2) in safe_paths:
-			if (ip1, l1, r1) != (ip2, l2, r2) and not independent_paths((ip1, l1, r1), (ip2, l2, r2)):
-				transitive_graph.add_edge((ip1, l1, r1), (ip2, l2, r2))
-	transitive_graph.add_nodes_from(['s', 't'])
-	for v in transitive_graph.nodes():
-		if v == 's' or v == 't':
-			continue
-		if transitive_graph.in_degree(v) == 0:
-			transitive_graph.add_edge('s', v)
-		if transitive_graph.out_degree(v) == 0:
-			transitive_graph.add_edge(v, 't')
-
-	# Normalise node indices to [0..n)
-	oldnode_to_newnode = dict()
-	newnode_to_oldnode = dict()
-	for (x, v) in enumerate(transitive_graph.nodes()):
-		oldnode_to_newnode[v] = x
-		newnode_to_oldnode[x] = v
-
-	# Call C++ code to calculate maximum weight antichain
-	# Program mwa calls naive_minflow_reduction -> naive_minflow_solve -> maxantichain_from_minflow
-	mwa_input = io.StringIO()
-	mwa_input.write("{} {}\n".format(transitive_graph.number_of_nodes(), transitive_graph.number_of_edges()))
-	for (u, v) in transitive_graph.edges():
-		mwa_input.write("{} {}\n".format(oldnode_to_newnode[u], oldnode_to_newnode[v]))
-
-	mwa_input.write("{} {}\n".format(oldnode_to_newnode['s'], 0))
-	mwa_input.write("{} {}\n".format(oldnode_to_newnode['t'], 0))
-	for (ip, l, r) in safe_paths:
-		mwa_input.write("{} {}\n".format(oldnode_to_newnode[(ip, l, r)], r - l))
-
-	res = subprocess.run(["./mwa"], input=mwa_input.getvalue(), text=True, capture_output=True)
-	if res.stdout != '':
-		mwa = list(map(int, res.stdout.split(' ')))
-		mwa = list(map(lambda x: x-1, mwa))
-	else:
-		mwa = []
-	
-	assert mfd.G.number_of_edges() == 0 or len(mwa) > 0
-
-	mli_safe_paths = []
-	for x in mwa:
-		# Find corresponding safe path going through the edge (u,v,i)
-		assert ip != -1
-		ip, l, r = newnode_to_oldnode[x]
-		mli_safe_paths.append((ip, l, r))
-	
-	return mli_safe_paths 
-
-def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge):
-	graph = mfd.G
-	greedy_paths = mfd.heuristic_paths
-
-	N = graph.number_of_nodes()
-	M = graph.number_of_edges()
-	orig_N = N
-	orig_M = M
-
+def creating_graph_input (graph_input, mfd, longest_safe_path_of_edge, N, M, orig_M, orig_N):
 	# Normalise node indices to [0..N)
 	oldnode_to_newnode = dict()
 	newnode_to_oldnode = dict()
-	for (x, v) in enumerate(graph.nodes()):
+	for (x, v) in enumerate(mfd.G.nodes()):
 		oldnode_to_newnode[v] = x
 		newnode_to_oldnode[x] = v
 
 	# add node between every edge
-	E = {oldnode_to_newnode[u]: list() for u in graph.nodes}
+	E = {oldnode_to_newnode[u]: list() for u in mfd.G.nodes}
 	newnode_to_edge = dict()
 	edge_to_newnode = dict()
-	for (u,v,i) in graph.edges:
+	for (u,v,i) in mfd.G.edges:
 		u = oldnode_to_newnode[u]
 		v = oldnode_to_newnode[v]
 
@@ -582,17 +510,32 @@ def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge):
 
 	# Call C++ code to calculate maximum weight antichain
 	# Program mwa calls naive_minflow_reduction -> naive_minflow_solve -> maxantichain_from_minflow
-	mwa_input = io.StringIO()
-	mwa_input.write("{} {}\n".format(N, M))
+	graph_input = io.StringIO()
+	graph_input.write("{} {}\n".format(N, M))
 	for u in E:
 		for v in E[u]:
-			mwa_input.write("{} {}\n".format(u, v))
+			graph_input.write("{} {}\n".format(u, v))
 
-	for v in graph.nodes():
-		mwa_input.write("{} {}\n".format(oldnode_to_newnode[v], 0))
+	for v in mfd.G.nodes():
+		graph_input.write("{} {}\n".format(oldnode_to_newnode[v], 0))
 	for (u,v,i) in longest_safe_path_of_edge:
 		x = edge_to_newnode[oldnode_to_newnode[u],oldnode_to_newnode[v],i]
-		mwa_input.write("{} {}\n".format(x, longest_safe_path_of_edge[u,v,i][0]))
+		graph_input.write("{} {}\n".format(x, longest_safe_path_of_edge[u,v,i][0]))
+
+	return graph_input, newnode_to_edge, newnode_to_oldnode
+
+
+def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge):
+	graph = mfd.G
+	greedy_paths = mfd.heuristic_paths
+
+	N = graph.number_of_nodes()
+	M = graph.number_of_edges()
+	orig_N = N
+	orig_M = M
+		
+	mwa_input = io.StringIO()
+	mwa_input, newnode_to_edge, newnode_to_oldnode = creating_graph_input (mwa_input, mfd, longest_safe_path_of_edge, N, M, orig_M, orig_N)
 
 	res = subprocess.run(["./mwa"], input=mwa_input.getvalue(), text=True, capture_output=True)
 	if res.stdout != '':
@@ -1018,13 +961,13 @@ def pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_const
 		return mfd
 	
 	can_fail = is_inexact or len(contracted_path_constraints) > 0
-	
+	longest_safe_path_of_edge = dict()
 	if contracted_heuristic_paths:
 		assert mfd.find_safe_paths()
 		SAFE_PATHS += mfd.safe_paths_amount
 
 		# Calculate safe paths antichain
-		longest_safe_path_of_edge = dict()
+		#longest_safe_path_of_edge = dict()
 		for u,v,i in mfd.G.edges(keys=True):
 			longest_safe_path_of_edge[u,v,i] = (0, (-1, -1, -1))
 		for ip, path in enumerate(mfd.heuristic_paths):
@@ -1043,7 +986,7 @@ def pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_const
 		safe_antichain = []
 
 
-	found_sol_or_time_limit = mfd.mfd_algorithm(safe_paths=safe_antichain, path_constraints=contracted_path_constraints, time_budget=30*60)
+	found_sol_or_time_limit = mfd.mfd_algorithm(longest_safe_path_of_edge, safe_paths=safe_antichain, path_constraints=contracted_path_constraints, time_budget=30*60)
 	assert found_sol_or_time_limit or can_fail
 
 	if mfd.opt_is_greedy:

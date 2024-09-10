@@ -604,39 +604,39 @@ bool is_valid_cover(std::vector<std::vector<int>> &cover, Graph &g) {
 	return true;
 }
 
-int main() {
-	// Faster input:
-	std::ios_base::sync_with_stdio(0);
-	std::cin.tie(0);
+// int main() {
+// 	// Faster input:
+// 	std::ios_base::sync_with_stdio(0);
+// 	std::cin.tie(0);
 	
-	int n, m;
-	std::cin >> n >> m;
+// 	int n, m;
+// 	std::cin >> n >> m;
 
-	Graph g(n);
-	for (int i=0; i<m; i++) {
-		int a, b;
-		std::cin >> a >> b;
-		a++; b++;
-		g.add_edge(a, b);
-	}
+// 	Graph g(n);
+// 	for (int i=0; i<m; i++) {
+// 		int a, b;
+// 		std::cin >> a >> b;
+// 		a++; b++;
+// 		g.add_edge(a, b);
+// 	}
 	
-	std::vector<int> node_weight(n+1);
-	for (int i=0; i<n; i++) {
-		int v, w;
-		std::cin >> v >> w;
-		v++;
-		node_weight[v] = w;
-	}
+// 	std::vector<int> node_weight(n+1);
+// 	for (int i=0; i<n; i++) {
+// 		int v, w;
+// 		std::cin >> v >> w;
+// 		v++;
+// 		node_weight[v] = w;
+// 	}
 
-	Flowgraph<Edge::Minflow> fg = *naive_minflow_reduction(g, [&](int v){
-			return node_weight[v];
-	});
-	naive_minflow_solve(fg);
-	antichain mwa = maxantichain_from_minflow(fg);
+// 	Flowgraph<Edge::Minflow> fg = *naive_minflow_reduction(g, [&](int v){
+// 			return node_weight[v];
+// 	});
+// 	naive_minflow_solve(fg);
+// 	antichain mwa = maxantichain_from_minflow(fg);
 
-	for (int i=0; i<(int)mwa.size(); i++)
-		std::cout << mwa[i] << " \n"[i+1 == (int)mwa.size()];
+// 	for (int i=0; i<(int)mwa.size(); i++)
+// 		std::cout << mwa[i] << " \n"[i+1 == (int)mwa.size()];
 
 
-	return 0;
-}
+// 	return 0;
+// }

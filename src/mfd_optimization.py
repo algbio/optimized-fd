@@ -267,6 +267,8 @@ class Mfd:
 			for i in range(0, len(result_lines), 2):
 				first_line  = result_lines[i]
 				first_parts = first_line.split(',')
+				
+				assert(len(result_lines)%2==0)
 
 				second_line  = result_lines[i + 1]
 				second_parts = second_line.split(',')
@@ -987,7 +989,6 @@ def pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_const
 		safe_antichain = edge_mwa_safe_paths(mfd, longest_safe_path_of_edge)
 	else:
 		safe_antichain = []
-
 
 	found_sol_or_time_limit = mfd.mfd_algorithm(longest_safe_path_of_edge, safe_paths=safe_antichain, path_constraints=contracted_path_constraints, time_budget=30*60)
 	assert found_sol_or_time_limit or can_fail

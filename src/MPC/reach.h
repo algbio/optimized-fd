@@ -74,7 +74,7 @@ public:
             std::tie(u, v, start_node_of_edge, end_node_of_edge, edge_index, path_index) = cr;
 
             std::cout << start_node_of_edge << "," << end_node_of_edge << "," << edge_index << "," << path_index << ","
-                    << (reaches(u, v) ? 1 : 0);
+                    << (reaches(u+1, v+1) ? 1 : 0);
         }
     }
 

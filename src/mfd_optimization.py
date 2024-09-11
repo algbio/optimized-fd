@@ -255,7 +255,7 @@ class Mfd:
 
 		reachability_input.write(f"{len(control_reachability)}\n")
 		for cr_tuple in control_reachability:
-			reachability_input.write(f"{cr_tuple[0]} {cr_tuple[1]} {cr_tuple[2]} {cr_tuple[3]} {cr_tuple[4]}\n")
+			reachability_input.write(f"{cr_tuple[0]} {cr_tuple[1]} {cr_tuple[2]} {cr_tuple[3]} {cr_tuple[4]} {cr_tuple[5]}\n")
 
 		reachability_input.write(graph_input.getvalue())
 
@@ -265,11 +265,14 @@ class Mfd:
 			result_lines = res.stdout.strip().split('\n')
 
 			for i in range(0, len(result_lines), 2):
-				first_line = result_lines[i]
+				first_line  = result_lines[i]
 				first_parts = first_line.split(',')
 
-				second_line = result_lines[i + 1]
+				second_line  = result_lines[i + 1]
 				second_parts = second_line.split(',')
+
+				first_parts   = list(map(lambda x : int(x),  first_parts))
+				second_parts  = list(map(lambda x : int(x), second_parts))
 
 				# this parts array has such structure: start_node_of_edge, end_node_of_edge, edge_index, path_index, reachability_result
 				# reachability_result is equal to 1 or 0

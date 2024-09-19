@@ -13,6 +13,7 @@ from gurobipy import GRB
 from collections import deque
 from bisect import bisect
 from copy import deepcopy
+import graphviz
 
 # Main class for Minimum flow decomposition
 class Mfd:
@@ -152,6 +153,9 @@ class Mfd:
 
 		for i in range(lower_bound,upper_bound+1):
 			self.model_status = self.solve(safe_paths, path_constraints, i, time_budget, longest_safe_path_of_edge)
+			# print(self.model_status)
+			# print(GRB.OPTIMAL)
+			# print(GRB.TIME_LIMIT)
 			if self.model_status == GRB.OPTIMAL or self.model_status == GRB.TIME_LIMIT:
 				return True
 		return False
@@ -261,6 +265,8 @@ class Mfd:
 
 		res = subprocess.run(["./compute_reach"], input=reachability_input.getvalue(), text=True, capture_output=True)
 
+		#print(control_reachability)
+		#print(res)
 		if res.stdout != '':
 			result_lines = res.stdout.strip().split('\n')
 
@@ -281,6 +287,7 @@ class Mfd:
 
 				if (first_parts[4] == 0 and second_parts[4] == 0):
 					model.addConstr(x[first_parts[0], first_parts[1], first_parts[2], first_parts[3]] == 0)
+					#assert ((first_parts[0], first_parts[1], first_parts[2], first_parts[3]) in not_reachable)
 		else:
 			print("Error occurred in C++ process:", res.stderr)
 
@@ -310,7 +317,16 @@ class Mfd:
 
 		# reachability constraints
 		control_reachability = []
+		#not_reachable = []
 
+		# print("safe paths:" )
+		# print(safe_paths)
+		N = self.G.number_of_nodes()
+		M = self.G.number_of_edges()
+		orig_N = N
+		orig_M = M
+		graph_input = io.StringIO()
+		graph_input, _, _, oldnode_to_newnode = creating_graph_input (graph_input, self, longest_safe_path_of_edge, N, M, orig_M, orig_N)
 		for path_index, path in enumerate(safe_paths):
 			if not path:  # if path is empty, skip it
 				continue
@@ -334,20 +350,17 @@ class Mfd:
 				end_node_of_edge = edge[1]
 				
 				# if the edge cannot reach the first node of the path and the last node of the path cannot reach the edge
-				# if not (self.is_reachable(end_node_of_edge, first_node_of_path) or self.is_reachable(last_node_of_path, start_node_of_edge)):
-				# 	model.addConstr(x[edge[0], edge[1], edge[2], path_index] == 0)
-				control_reachability.append((last_node_of_path , start_node_of_edge, edge[0], edge[1], edge[2], path_index))
-				control_reachability.append((end_node_of_edge  , first_node_of_path, edge[0], edge[1], edge[2], path_index))
+				#if not (self.is_reachable(end_node_of_edge, first_node_of_path) or self.is_reachable(last_node_of_path, start_node_of_edge)):
+				 	#model.addConstr(x[edge[0], edge[1], edge[2], path_index] == 0)
+					#not_reachable.append((edge[0], edge[1], edge[2], path_index))
 
-		N = self.G.number_of_nodes()
-		M = self.G.number_of_edges()
-		orig_N = N
-		orig_M = M
+				control_reachability.append((("{} {}\n".format(oldnode_to_newnode[last_node_of_path], 0)) , ("{} {}\n".format(oldnode_to_newnode[start_node_of_edge], 0)), edge[0], edge[1], edge[2], path_index))
+				control_reachability.append((("{} {}\n".format(oldnode_to_newnode[end_node_of_edge], 0))  , ("{} {}\n".format(oldnode_to_newnode[first_node_of_path], 0)), edge[0], edge[1], edge[2], path_index))
+				#print(control_reachability)
 
-		graph_input = io.StringIO()
-		graph_input, _, _ = creating_graph_input (graph_input, self, longest_safe_path_of_edge, N, M, orig_M, orig_N)
-
-		self.check_reachability_cpp(graph_input, control_reachability, model, x)
+		#self.check_reachability_cpp(graph_input, control_reachability, model, x)
+		if (len(control_reachability) != 0):
+			self.check_reachability_cpp(graph_input, control_reachability, model, x)
 				
 		# flow conservation
 		for k in range(size):
@@ -488,6 +501,9 @@ class Mfd:
 		return True
 
 def creating_graph_input (graph_input, mfd, longest_safe_path_of_edge, N, M, orig_M, orig_N):
+	# uncomment this lines to visualize graph
+	# graph_viz = visualize_graph(mfd.G)
+	# graph_viz.render("processed_graph", format="png", cleanup=True)
 	# Normalise node indices to [0..N)
 	oldnode_to_newnode = dict()
 	newnode_to_oldnode = dict()
@@ -527,7 +543,7 @@ def creating_graph_input (graph_input, mfd, longest_safe_path_of_edge, N, M, ori
 		x = edge_to_newnode[oldnode_to_newnode[u],oldnode_to_newnode[v],i]
 		graph_input.write("{} {}\n".format(x, longest_safe_path_of_edge[u,v,i][0]))
 
-	return graph_input, newnode_to_edge, newnode_to_oldnode
+	return graph_input, newnode_to_edge, newnode_to_oldnode, oldnode_to_newnode
 
 
 def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge):
@@ -540,7 +556,7 @@ def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge):
 	orig_M = M
 		
 	mwa_input = io.StringIO()
-	mwa_input, newnode_to_edge, newnode_to_oldnode = creating_graph_input (mwa_input, mfd, longest_safe_path_of_edge, N, M, orig_M, orig_N)
+	mwa_input, newnode_to_edge, newnode_to_oldnode, _ = creating_graph_input (mwa_input, mfd, longest_safe_path_of_edge, N, M, orig_M, orig_N)
 
 	res = subprocess.run(["./mwa"], input=mwa_input.getvalue(), text=True, capture_output=True)
 	if res.stdout != '':
@@ -1114,6 +1130,20 @@ def read_truth(truth_file):
 
 	return solutions
 
+def visualize_graph(graph):
+	dot = graphviz.Digraph(comment="Graph Visualization")
+		
+		
+	for node in graph.nodes:
+		dot.node(str(node))
+	
+	for u, v, data in graph.edges(data=True):
+		label = data.get('label', '')
+		dot.edge(str(u), str(v), label=label)
+		
+	return dot
+
+
 def check_solution(graph, paths, weights):
 	flow_from_paths = {}
 	for (u, v) in graph.edges():
@@ -1181,6 +1211,7 @@ if __name__ == '__main__':
 		mngraph_out_contraction, mngraph_in_contraction, trivial_paths, contracted_path_constraints, contracted_heuristic_paths, contracted_heuristic_weights = y_to_v(graph, path_constraints=subpaths, heuristic_paths=heuristic_paths, heuristic_weights=heuristic_weights)
 		
 		mfd = approx_pipeline(graph, mngraph_in_contraction, trivial_paths) if args.approx else pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_constraints=contracted_path_constraints, contracted_heuristic_weights=contracted_heuristic_weights, contracted_heuristic_paths=contracted_heuristic_paths, is_inexact=not args.exact)
+
 		num_paths = 0 if mfd.model_status == GRB.TIME_LIMIT else mfd.k + mfd.number_of_contracted_paths
 		number_of_paths.append(num_paths)
 		runtimes.append(mfd.runtime)

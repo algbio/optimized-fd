@@ -47,7 +47,7 @@ public:
             dfs2(dfs2, i);
 
         std::vector<std::vector<int>> pth(g.n + 1);
-        for (int i = 0; i < pc.size(); i++) {
+        for (int i = 0; i < ((int) pc.size()); i++) {
             auto &path = pc[i];
             for (auto &u : path) {
                 some_path[u] = i;
@@ -60,7 +60,7 @@ public:
                 auto &p = some_path[v];
                 if (l2r[u][p] >= l2r[v][p])
                     continue;
-                for (int i = 0; i < pc.size(); i++) {
+                for (int i = 0; i < ((int) pc.size()); i++) {
                     l2r[u][i] = std::max(l2r[u][i], l2r[v][i]);
                 }
             }

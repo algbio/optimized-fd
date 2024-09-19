@@ -4,11 +4,32 @@
 #include "pflow.h"
 #include <memory>
 #include <vector>
+#include <fstream> 
 
 std::unique_ptr<reachability_idx> graph_reachability(Graph &g, const std::vector<std::tuple<int, int, int, int, int, int>> &control_reachability) {
     auto mf = pflowk2(g);
     auto pc = minflow_reduction_path_recover_faster(*mf);
     return std::make_unique<reachability_idx>(g, pc, control_reachability);
+}
+
+void save_graph_to_dot(const Graph &g, const std::string &filename) {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return;
+    }
+    
+    file << "digraph G {\n";  
+
+    for (int i = 1; i <= g.n; ++i) {
+        for (auto u : g.edge_out[i]) {
+            file << "    " << i << " -> " << u << ";\n";  
+        }
+    }
+
+    file << "}\n"; 
+    file.close();
+    std::cout << "Graph saved to " << filename << std::endl;
 }
 
 int main() {
@@ -38,7 +59,10 @@ int main() {
         g.add_edge(a, b);
     }
 
-    auto reachability = graph_reachability(g, control_reachability);
+    // uncomment this part to visualize the graph
+    // save_graph_to_dot(g, "graph.dot");
+    // system("dot -Tpng graph.dot -o graph.png");
 
+    auto reachability = graph_reachability(g, control_reachability);
     return 0;
 }

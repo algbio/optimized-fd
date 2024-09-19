@@ -228,36 +228,13 @@ class Mfd:
 							recover_path(s, s_out, i, w)
 
 		return model.status
-	
-	"""
-	Check if there is a path from 'start_node' to 'target_node' in the graph using DFS.
-	"""
-	def is_reachable(self, start_node, target_node):
-		
-		visited_nodes = set() 
-
-		def dfs(current_node):
-			if current_node in visited_nodes:
-				return False  # to avoid cycles
-			
-			visited_nodes.add(current_node) 
-			
-			if current_node == target_node:
-				return True
-
-			for _, next_node, _ in self.G.out_edges(current_node, keys=True):
-				if dfs(next_node): 
-					return True
-			
-			return False  
-
-		return dfs(start_node)
 
 
 	def check_reachability_cpp(self, graph_input, control_reachability, model, x):
 		reachability_input = io.StringIO()
 
 		reachability_input.write(f"{len(control_reachability)}\n")
+
 		for cr_tuple in control_reachability:
 			reachability_input.write(f"{cr_tuple[0]} {cr_tuple[1]} {cr_tuple[2]} {cr_tuple[3]} {cr_tuple[4]} {cr_tuple[5]}\n")
 
@@ -265,16 +242,14 @@ class Mfd:
 
 		res = subprocess.run(["./compute_reach"], input=reachability_input.getvalue(), text=True, capture_output=True)
 
-		#print(control_reachability)
-		#print(res)
 		if res.stdout != '':
-			result_lines = res.stdout.strip().split('\n')
 
-			for i in range(0, len(result_lines), 2):
+			result_lines = res.stdout.strip().split('\n')
+			
+			assert(len(result_lines)%2==0) # there are two queries for each control
+			for i in range(0, len(result_lines) , 2):
 				first_line  = result_lines[i]
-				first_parts = first_line.split(',')
-				
-				assert(len(result_lines)%2==0)
+				first_parts = first_line.split(',')		
 
 				second_line  = result_lines[i + 1]
 				second_parts = second_line.split(',')
@@ -287,7 +262,6 @@ class Mfd:
 
 				if (first_parts[4] == 0 and second_parts[4] == 0):
 					model.addConstr(x[first_parts[0], first_parts[1], first_parts[2], first_parts[3]] == 0)
-					#assert ((first_parts[0], first_parts[1], first_parts[2], first_parts[3]) in not_reachable)
 		else:
 			print("Error occurred in C++ process:", res.stderr)
 
@@ -317,7 +291,6 @@ class Mfd:
 
 		# reachability constraints
 		control_reachability = []
-		#not_reachable = []
 
 		# print("safe paths:" )
 		# print(safe_paths)
@@ -348,15 +321,9 @@ class Mfd:
 				
 				start_node_of_edge = edge[0]
 				end_node_of_edge = edge[1]
-				
-				# if the edge cannot reach the first node of the path and the last node of the path cannot reach the edge
-				#if not (self.is_reachable(end_node_of_edge, first_node_of_path) or self.is_reachable(last_node_of_path, start_node_of_edge)):
-				 	#model.addConstr(x[edge[0], edge[1], edge[2], path_index] == 0)
-					#not_reachable.append((edge[0], edge[1], edge[2], path_index))
 
-				control_reachability.append((("{} {}\n".format(oldnode_to_newnode[last_node_of_path], 0)) , ("{} {}\n".format(oldnode_to_newnode[start_node_of_edge], 0)), edge[0], edge[1], edge[2], path_index))
-				control_reachability.append((("{} {}\n".format(oldnode_to_newnode[end_node_of_edge], 0))  , ("{} {}\n".format(oldnode_to_newnode[first_node_of_path], 0)), edge[0], edge[1], edge[2], path_index))
-				#print(control_reachability)
+				control_reachability.append((int(oldnode_to_newnode[last_node_of_path]) , int(oldnode_to_newnode[start_node_of_edge]), edge[0], edge[1], edge[2], path_index))
+				control_reachability.append((int(oldnode_to_newnode[end_node_of_edge])  , int(oldnode_to_newnode[first_node_of_path]), edge[0], edge[1], edge[2], path_index))
 
 		#self.check_reachability_cpp(graph_input, control_reachability, model, x)
 		if (len(control_reachability) != 0):

@@ -29,7 +29,6 @@ void save_graph_to_dot(const Graph &g, const std::string &filename) {
 
     file << "}\n"; 
     file.close();
-    std::cout << "Graph saved to " << filename << std::endl;
 }
 
 int main() {

@@ -28,11 +28,11 @@ if [ ! -f "$python_script" ]; then
 	exit 1
 fi
 
-
 total_runtime=0
 num_runs=0
 lw_eq_up=0
 x_vars_set_to_one=0
+x_vars_set_to_zero=0  
 x_vars_total=0
 num_of_edges_orig=0
 num_of_edges_contracted=0
@@ -42,8 +42,8 @@ for file in "$directory"/*; do
 	if [ -f "$file" ] && [ "${file##*.}" = "graph" ]; then
 		# Create output file name with the same name but different extension
 		output_file="${file%.graph}.out"
-		orig_heuristic_file="${file%.graph}.catfish.out" 
-		heuristic_file="${file%.graph}.catfish_for_opt.out" 
+		orig_heuristic_file="${file%.graph}.catfish.out"
+		heuristic_file="${file%.graph}.catfish_for_opt.out"
 
 		./sol_from_catfish_to_optimized_ILP_readable.sh $orig_heuristic_file $heuristic_file
 
@@ -59,6 +59,10 @@ for file in "$directory"/*; do
 		x_vars_total_case="${x_vars_ratio#*/}"
 		x_vars_set_to_one=$(echo "$x_vars_set_to_one + $x_vars_set_to_one_case" | bc)
 		x_vars_total=$(echo "$x_vars_total + $x_vars_total_case" | bc)
+
+		x_vars_zero_ratio=$(echo "$run_stdout" | grep "Path variables set to zero by safety:" | awk '{print $8}')
+		x_vars_set_to_zero_case="${x_vars_zero_ratio%/*}"
+		x_vars_set_to_zero=$(echo "$x_vars_set_to_zero + $x_vars_set_to_zero_case" | bc)
 
 		num_of_edges_orig_case=$(echo "$run_stdout" | grep "Number of edges in the original graph:" | awk '{print $8}')
 		num_of_edges_orig=$(echo "$num_of_edges_orig + $num_of_edges_orig_case" | bc)
@@ -100,5 +104,6 @@ average_runtime=$(echo "scale=2; $total_runtime / $num_runs" | bc)
 echo "Average runtime: $average_runtime seconds"
 echo "Lower bound was equal to upper bound for $lw_eq_up out of $num_runs runs."
 echo "Overall, $x_vars_set_to_one path indicator variables were set to one, out of totally $x_vars_total."
+echo "Overall, $x_vars_set_to_zero path indicator variables were set to zero, out of totally $x_vars_total."  
 echo "Number of edges in the original graphs: $num_of_edges_orig."
 echo "Number of edges in the contracted graphs: $num_of_edges_contracted."

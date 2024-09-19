@@ -231,6 +231,7 @@ class Mfd:
 
 
 	def check_reachability_cpp(self, graph_input, control_reachability, model, x):
+		global x_set_to_zero 
 		reachability_input = io.StringIO()
 
 		reachability_input.write(f"{len(control_reachability)}\n")
@@ -262,6 +263,7 @@ class Mfd:
 
 				if (first_parts[4] == 0 and second_parts[4] == 0):
 					model.addConstr(x[first_parts[0], first_parts[1], first_parts[2], first_parts[3]] == 0)
+					x_set_to_zero = x_set_to_zero + 1
 		else:
 			print("Error occurred in C++ process:", res.stderr)
 
@@ -920,6 +922,7 @@ lb_eq_ub = 0
 N, M = 0, 0
 SAFE_PATHS = 0
 x_set_to_one = 0
+x_set_to_zero = 0
 x_total = 0
 num_of_edges_orig = 0
 num_of_edges_contracted = 0
@@ -1202,6 +1205,7 @@ if __name__ == '__main__':
 		print("Number of trivially decomposed graphs:", trivial_occur)
 		print("Lower bound equals upper bound:", lb_eq_ub)
 		print("Path variables set to one by safety: {}/{}".format(x_set_to_one, x_total))
+		print("Path variables set to zero by safety: {}/{}".format(x_set_to_zero, x_total))
 		print("Number of edges in the MFD solution:", sol_length)
 		print("Total sum of n and m:", N, M)
 		print("Number of safe paths:", SAFE_PATHS)

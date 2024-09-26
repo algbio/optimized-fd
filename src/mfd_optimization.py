@@ -1006,7 +1006,7 @@ def pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_const
 	#print("Lengths are equal:", len(mfd.safe_paths), len(mfd.heuristic_paths))
 
 	#found_sol_or_time_limit = mfd.mfd_algorithm(safe_paths=safe_antichain, path_constraints=contracted_path_constraints, time_budget=30*60)
-	found_sol_or_time_limit = mfd.mfd_algorithm(safe_paths=safe_antichain, path_constraints=safe_paths_as_path_constraints, time_budget=30*60)
+	found_sol_or_time_limit = mfd.mfd_algorithm(safe_paths=[], path_constraints=safe_paths_as_path_constraints, time_budget=30*60)
 	assert found_sol_or_time_limit or can_fail
 
 	if mfd.opt_is_greedy:

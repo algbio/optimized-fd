@@ -185,8 +185,8 @@ class Mfd:
 	"""
 	Solves the ILP with a given set of path weights.
 	"""
-	def solve_given_weights(self, path_weights, time_budget=float('inf')):
-		model, _ = self.ilp_model_weighted(path_weights, time_budget)
+	def solve_given_weights(self, path_weights, path_constraints, time_budget=float('inf')):
+		model, _ = self.ilp_model_weighted(path_weights, path_constraints, time_budget)
 		model.optimize()
 		self.runtime += model.runtime
 		self.model_status = model.status
@@ -224,7 +224,6 @@ class Mfd:
 							recover_path(s, s_out, i, w)
 
 		return model.status
-	
 
 	"""
 	Build basic gurobi ILP model.
@@ -248,7 +247,7 @@ class Mfd:
 
 		# Objective function: minimise number of paths
 		#model.setObjective(sum(x[u, v, i, k] for k in range(size) for s in self.sources for (u, v, i) in self.G.out_edges(s, keys=True)), GRB.MINIMIZE)
-
+			
 		# flow conservation
 		for k in range(size):
 			model.addConstr(sum(x[v, w, i, k] for v in self.sources for _, w, i in self.G.out_edges(v, keys=True)) == 1)
@@ -293,11 +292,13 @@ class Mfd:
 	This gives an optimal solutions if the weights appear in the optimal
 	solution.
 	"""
-	def ilp_model_weighted(self, weight_set, time_budget):
+	# NOTE: The model does not work yet with subpath constraints but only with the standard MFDW and with inexact flows
+	def ilp_model_weighted(self, weight_set, path_constraints, time_budget):
 		size = len(weight_set)
 
 		# create index set
 		T = [(u, v, i, k) for (u, v, i) in self.G.edges(keys=True) for k in range(size)]
+		PC = [(k, j) for k in range(size) for j in range(len(path_constraints))]
 
 		model = gp.Model('MFD_weights')
 		model.setParam('LogToConsole', 0)
@@ -306,11 +307,25 @@ class Mfd:
 
 		# Create variables
 		x = model.addVars(T, vtype=GRB.INTEGER, name='x', lb=0) # path indicators
+		r = model.addVars(PC, vtype=GRB.BINARY, name='r') # path constraint indicators
 
 		# Objective function: minimise number of paths
 		model.setObjective(sum(x[u, v, i, k] for k in range(size) for s in self.sources for (u, v, i) in self.G.out_edges(s, keys=True)), GRB.MINIMIZE)
 		
-		# flow balance
+		# path_constraints have the following structure : [path1, path2 ....]
+		# pathi has the following structure: [edge1, edge2...]
+		# edgei has the following structure: (u, v, j) (vertex u to vertex v, j-th parallel edge from u to v)
+		
+		# ∀ subpath constraint Ri: Σj rij > 0
+		for j in range(len(path_constraints)):
+			model.addConstr(sum(r[k, j] for k in range(size)) > 0) # sum of r[k, j] for all k must be greater than 0 (at least one weight must satisfy the j-th path constraint)
+
+		# ensure the path weight is used if rij = 1
+		for j, p in enumerate(path_constraints):
+			for k in range(size):
+				for (u, v, i) in p:
+					model.addConstr((r[k, j] == 1) >> (x[u, v, i, k] > 0)) # if r[k, j] == 1, then the all of the x[u, v, i, k] variables must be greater than 0
+
 		for (u, v, i, f) in self.G.edges(keys=True, data='f'):
 			fuv = sum(weight_set[k] * x[u, v, i, k] for k in range(size))
 			model.addConstr(f[0] <= fuv)
@@ -386,114 +401,6 @@ class Mfd:
 		self.safe_paths_amount += my_safe_paths_amount
 
 		return True
-
-# Calculates the maximum weight independent path set,
-# where the weight of a path is its length
-def mlips(mfd):
-	# Check if two safe paths are equal (they might live in different heuristic paths)
-	def are_equal(x, y):
-		if x[2] - x[1] != y[2] - y[1]:
-			return False
-
-		for i in range(x[2] - x[1]):
-			if mfd.heuristic_paths[x[0]][x[1] + i] != mfd.heuristic_paths[y[0]][y[1] + i]:
-				return False
-
-		return True
-
-	# Find all unique safe paths
-	length_one_safe_paths = {(u,v,i): True for (u,v,i) in mfd.G.edges(keys=True)}
-	safe_paths = []
-	for ip, path in enumerate(mfd.heuristic_paths):
-		for iw, window in enumerate(mfd.safe_paths[ip]):
-			for j in range(window[0], window[1]):
-				length_one_safe_paths[mfd.heuristic_paths[ip][j]] = False
-			is_unique = TrueA
-			for (l, (jp, L, R)) in safe_paths:
-				is_unique = is_unique and not are_equal((ip, window[0], window[1]), (jp, L, R))
-			if is_unique:
-				safe_paths.append((window[1] - window[0], (ip, window[0], window[1])))
-		for j, (u,v,i) in enumerate(path):
-			if length_one_safe_paths[u,v,i]:
-				safe_paths.append((1, (ip, j, j+1)))
-	
-	# Check whether two paths are independent (subpaths do not occur)
-	def independent_paths(p1, p2):
-		ip1, l1, r1 = p1
-		ip2, l2, r2 = p2
-
-		e1l = mfd.heuristic_paths[ip1][l1]
-		e1r = mfd.heuristic_paths[ip1][r1-1]
-		e2l = mfd.heuristic_paths[ip2][l2]
-		e2r = mfd.heuristic_paths[ip2][r2-1]
-
-		if e2l in nx.edge_dfs(mfd.G, e1r[1]):
-			# One comes after the other
-			return False
-
-		# The suffix of the left is the prefix of the right
-		found_first = -1
-		for i in range(l1, r1):
-			if found_first > -1:
-				if mfd.heuristic_paths[ip1][i] != mfd.heuristic_paths[ip2][i - found_first + l2]:
-					return True
-			else:
-				if mfd.heuristic_paths[ip1][i] == mfd.heuristic_paths[ip2][l2]:
-					found_first = i
-		return found_first == -1
-		
-
-	transitive_graph = nx.DiGraph()
-	transitive_graph.add_nodes_from(safe_paths)
-	for (ip1, l1, r1) in safe_paths:
-		for (ip2, l2, r2) in safe_paths:
-			if (ip1, l1, r1) != (ip2, l2, r2) and not independent_paths((ip1, l1, r1), (ip2, l2, r2)):
-				transitive_graph.add_edge((ip1, l1, r1), (ip2, l2, r2))
-	transitive_graph.add_nodes_from(['s', 't'])
-	for v in transitive_graph.nodes():
-		if v == 's' or v == 't':
-			continue
-		if transitive_graph.in_degree(v) == 0:
-			transitive_graph.add_edge('s', v)
-		if transitive_graph.out_degree(v) == 0:
-			transitive_graph.add_edge(v, 't')
-
-	# Normalise node indices to [0..n)
-	oldnode_to_newnode = dict()
-	newnode_to_oldnode = dict()
-	for (x, v) in enumerate(transitive_graph.nodes()):
-		oldnode_to_newnode[v] = x
-		newnode_to_oldnode[x] = v
-
-	# Call C++ code to calculate maximum weight antichain
-	# Program mwa calls naive_minflow_reduction -> naive_minflow_solve -> maxantichain_from_minflow
-	mwa_input = io.StringIO()
-	mwa_input.write("{} {}\n".format(transitive_graph.number_of_nodes(), transitive_graph.number_of_edges()))
-	for (u, v) in transitive_graph.edges():
-		mwa_input.write("{} {}\n".format(oldnode_to_newnode[u], oldnode_to_newnode[v]))
-
-	mwa_input.write("{} {}\n".format(oldnode_to_newnode['s'], 0))
-	mwa_input.write("{} {}\n".format(oldnode_to_newnode['t'], 0))
-	for (ip, l, r) in safe_paths:
-		mwa_input.write("{} {}\n".format(oldnode_to_newnode[(ip, l, r)], r - l))
-
-	res = subprocess.run(["./mwa"], input=mwa_input.getvalue(), text=True, capture_output=True)
-	if res.stdout != '':
-		mwa = list(map(int, res.stdout.split(' ')))
-		mwa = list(map(lambda x: x-1, mwa))
-	else:
-		mwa = []
-	
-	assert mfd.G.number_of_edges() == 0 or len(mwa) > 0
-
-	mli_safe_paths = []
-	for x in mwa:
-		# Find corresponding safe path going through the edge (u,v,i)
-		assert ip != -1
-		ip, l, r = newnode_to_oldnode[x]
-		mli_safe_paths.append((ip, l, r))
-	
-	return mli_safe_paths 
 
 def edge_mwa_safe_paths(mfd, longest_safe_path_of_edge):
 	graph = mfd.G
@@ -1019,7 +926,7 @@ def pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_const
 	return mfd
 
 # Approximation pipeline
-def approx_pipeline(graph, mngraph_in_contraction, trivial_paths):
+def approx_pipeline(graph, mngraph_in_contraction, trivial_paths, path_constraints = []):
 	global trivial_occur
 	mfd = Mfd(mngraph_in_contraction, number_of_contracted_paths=len(trivial_paths))
 	if mngraph_in_contraction.number_of_edges() == 0:
@@ -1037,7 +944,7 @@ def approx_pipeline(graph, mngraph_in_contraction, trivial_paths):
 			path_weights.add(f[0])
 	path_weights = list(path_weights)
 
-	status = mfd.solve_given_weights(path_weights, time_budget=30*60)
+	status = mfd.solve_given_weights(path_weights, path_constraints, time_budget=30*60)
 	if status == GRB.TIME_LIMIT:
 		print("ILP Approx time limit.")
 		return mfd
@@ -1182,7 +1089,7 @@ if __name__ == '__main__':
 		heuristic_weights, heuristic_paths = hs if hs  else ([], [])
 		mngraph_out_contraction, mngraph_in_contraction, trivial_paths, contracted_path_constraints, contracted_heuristic_paths, contracted_heuristic_weights = y_to_v(graph, path_constraints=subpaths, heuristic_paths=heuristic_paths, heuristic_weights=heuristic_weights)
 		
-		mfd = approx_pipeline(graph, mngraph_in_contraction, trivial_paths) if args.approx else pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_constraints=contracted_path_constraints, contracted_heuristic_weights=contracted_heuristic_weights, contracted_heuristic_paths=contracted_heuristic_paths, is_inexact=not args.exact)
+		mfd = approx_pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_constraints) if args.approx else pipeline(graph, mngraph_in_contraction, trivial_paths, contracted_path_constraints=contracted_path_constraints, contracted_heuristic_weights=contracted_heuristic_weights, contracted_heuristic_paths=contracted_heuristic_paths, is_inexact=not args.exact)
 		num_paths = 0 if mfd.model_status == GRB.TIME_LIMIT else mfd.k + mfd.number_of_contracted_paths
 		number_of_paths.append(num_paths)
 		runtimes.append(mfd.runtime)

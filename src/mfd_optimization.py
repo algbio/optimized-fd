@@ -343,7 +343,7 @@ class Mfd:
 					control_reachability.append((int(oldnode_to_newnode[last_node_of_path]) , int(oldnode_to_newnode[start_node_of_edge]), edge[0], edge[1], edge[2], path_index))
 					control_reachability.append((int(oldnode_to_newnode[end_node_of_edge])  , int(oldnode_to_newnode[first_node_of_path]), edge[0], edge[1], edge[2], path_index))
 
-			if len(control_reachability) != 0 and optimzation_type == "opt4":
+			if ((len(control_reachability) != 0) and (optimzation_type == "opt4")):
 				self.check_reachability_cpp(graph_input, control_reachability, model, x)
 
 

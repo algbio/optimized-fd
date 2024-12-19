@@ -328,24 +328,23 @@ class Mfd:
 				first_node_of_path = first_edge_of_path[0]  
 				last_node_of_path = last_edge_of_path[1]
 					
-				for edge in self.G.edges(keys=True):  
+				for edge in self.G.edges(keys=True):
 					if edge in self.heuristic_paths[idx][l:r]:  # if edge is in the current path, skip it
 						continue
 					
-				start_node_of_edge = edge[0]
-				end_node_of_edge = edge[1]
-				
-				# if the edge cannot reach the first node of the path and the last node of the path cannot reach the edge
-				if (optimzation_type == "opt3"):
-					if not (self.is_reachable(end_node_of_edge, first_node_of_path) or self.is_reachable(last_node_of_path, start_node_of_edge)):
-						model.addConstr(x[edge[0], edge[1], edge[2], path_index] == 0)
-				else:
-					control_reachability.append((int(oldnode_to_newnode[last_node_of_path]) , int(oldnode_to_newnode[start_node_of_edge]), edge[0], edge[1], edge[2], path_index))
-					control_reachability.append((int(oldnode_to_newnode[end_node_of_edge])  , int(oldnode_to_newnode[first_node_of_path]), edge[0], edge[1], edge[2], path_index))
+					start_node_of_edge = edge[0]
+					end_node_of_edge = edge[1]
+					
+					# if the edge cannot reach the first node of the path and the last node of the path cannot reach the edge
+					if (optimzation_type == "opt3"):
+						if not (self.is_reachable(end_node_of_edge, first_node_of_path) or self.is_reachable(last_node_of_path, start_node_of_edge)):
+							model.addConstr(x[edge[0], edge[1], edge[2], path_index] == 0)
+					else:
+						control_reachability.append((int(oldnode_to_newnode[last_node_of_path]) , int(oldnode_to_newnode[start_node_of_edge]), edge[0], edge[1], edge[2], path_index))
+						control_reachability.append((int(oldnode_to_newnode[end_node_of_edge])  , int(oldnode_to_newnode[first_node_of_path]), edge[0], edge[1], edge[2], path_index))
 
 			if ((len(control_reachability) != 0) and (optimzation_type == "opt4")):
 				self.check_reachability_cpp(graph_input, control_reachability, model, x)
-
 
 		# flow conservation
 		for k in range(size):

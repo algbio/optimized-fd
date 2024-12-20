@@ -227,7 +227,7 @@ class Mfd:
 
 		return model.status
 	
-		"""
+	"""
 	Check if there is a path from 'start_node' to 'target_node' in the graph using DFS.
 	"""
 	def is_reachable(self, start_node, target_node):
@@ -249,6 +249,32 @@ class Mfd:
 		return dfs(start_node)
 	
 
+	"""
+	Perform a DFS to find all nodes that are reachable from a given node.
+
+	Args:
+	- start_node (int): The node from which the DFS starts.
+	- reverse (bool): If True, the DFS uses incoming edges (to find nodes that can reach the start_node).
+
+	Returns:
+	- set: A set of nodes that are reachable from or can reach the start node.
+	"""
+	def find_reachable_nodes(self, start_node, reverse=False):
+		visited = set()
+		stack = [start_node]
+
+		if reverse:
+			graph = self.G.reverse()
+		else:
+			graph = self.G
+
+		while stack:
+			node = stack.pop()
+			if node not in visited:
+				visited.add(node)
+				stack.extend([neighbor for neighbor in graph.neighbors(node) if neighbor not in visited])
+
+		return visited
 	def check_reachability_cpp(self, graph_input, control_reachability, model, x):
 		global x_set_to_zero 
 
@@ -283,7 +309,7 @@ class Mfd:
 	"""
 	Build basic gurobi ILP model.
 	"""
-	def ilp_basic_model(self, safe_paths, path_constraints, size, time_budget, optimzation_type, longest_safe_path_of_edge):
+	def ilp_basic_model(self, safe_paths, path_constraints, size, time_budget, optimization_type, longest_safe_path_of_edge):
 		# create index sets
 		T = [(u, v, i, k) for (u, v, i) in self.G.edges(keys=True) for k in range(size)]
 		SC = list(range(size))
@@ -304,7 +330,7 @@ class Mfd:
 		#model.setObjective(sum(x[u, v, i, k] for k in range(size) for s in self.sources for (u, v, i) in self.G.out_edges(s, keys=True)), GRB.MINIMIZE)
 
 		control_reachability = [] # this array is used if optimization_type = "opt4"
-		if (optimzation_type == "opt3" or optimzation_type == "opt4"):
+		if optimization_type in ["opt3", "opt4", "opt5"]:
 			N = self.G.number_of_nodes()
 			M = self.G.number_of_edges()
 			orig_N = N
@@ -324,26 +350,36 @@ class Mfd:
 				first_edge_of_path = self.heuristic_paths[idx][l]
 				last_edge_of_path = self.heuristic_paths[idx][r-1]
 				# edge had the following structure; (u, v, j) (vertex u to vertex v, j-th parallel edge from u to v)
-					
-				first_node_of_path = first_edge_of_path[0]  
-				last_node_of_path = last_edge_of_path[1]
-					
-				for edge in self.G.edges(keys=True):
-					if edge in self.heuristic_paths[idx][l:r]:  # if edge is in the current path, skip it
-						continue
-					
-					start_node_of_edge = edge[0]
-					end_node_of_edge = edge[1]
-					
-					# if the edge cannot reach the first node of the path and the last node of the path cannot reach the edge
-					if (optimzation_type == "opt3"):
-						if not (self.is_reachable(end_node_of_edge, first_node_of_path) or self.is_reachable(last_node_of_path, start_node_of_edge)):
-							model.addConstr(x[edge[0], edge[1], edge[2], path_index] == 0)
-					else:
-						control_reachability.append((int(oldnode_to_newnode[last_node_of_path]) , int(oldnode_to_newnode[start_node_of_edge]), edge[0], edge[1], edge[2], path_index))
-						control_reachability.append((int(oldnode_to_newnode[end_node_of_edge])  , int(oldnode_to_newnode[first_node_of_path]), edge[0], edge[1], edge[2], path_index))
+				
+				if (optimization_type == "opt5"):
+					reachable_from_start = self.find_reachable_nodes(first_edge_of_path[0])
+					reachable_to_end = self.find_reachable_nodes(last_edge_of_path[1], reverse=True)
 
-			if ((len(control_reachability) != 0) and (optimzation_type == "opt4")):
+					# add constraints to set x to 0 for edges not in L, R or the path itself
+					for u, v, i in self.G.edges(keys=True):
+						if (u, v, i) not in self.heuristic_paths[idx][l:r] and u not in reachable_to_end and v not in reachable_from_start:
+							model.addConstr(x[u, v, i, path_index] == 0)
+				
+				else:
+					first_node_of_path = first_edge_of_path[0]  
+					last_node_of_path = last_edge_of_path[1]
+						
+					for edge in self.G.edges(keys=True):
+						if edge in self.heuristic_paths[idx][l:r]:  # if edge is in the current path, skip it
+							continue
+						
+						start_node_of_edge = edge[0]
+						end_node_of_edge = edge[1]
+						
+						# if the edge cannot reach the first node of the path and the last node of the path cannot reach the edge
+						if (optimization_type == "opt3"):
+							if not (self.is_reachable(end_node_of_edge, first_node_of_path) or self.is_reachable(last_node_of_path, start_node_of_edge)):
+								model.addConstr(x[edge[0], edge[1], edge[2], path_index] == 0)
+						else:
+							control_reachability.append((int(oldnode_to_newnode[last_node_of_path]) , int(oldnode_to_newnode[start_node_of_edge]), edge[0], edge[1], edge[2], path_index))
+							control_reachability.append((int(oldnode_to_newnode[end_node_of_edge])  , int(oldnode_to_newnode[first_node_of_path]), edge[0], edge[1], edge[2], path_index))
+
+			if ((len(control_reachability) != 0) and (optimization_type == "opt4")):
 				self.check_reachability_cpp(graph_input, control_reachability, model, x)
 
 		# flow conservation

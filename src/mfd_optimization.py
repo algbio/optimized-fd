@@ -263,18 +263,20 @@ class Mfd:
 		visited = set()
 		stack = [start_node]
 
-		if reverse:
-			graph = self.G.reverse()
-		else:
-			graph = self.G
-
 		while stack:
 			node = stack.pop()
 			if node not in visited:
 				visited.add(node)
-				stack.extend([neighbor for neighbor in graph.neighbors(node) if neighbor not in visited])
+				
+				if reverse:
+					neighbors = self.G.predecessors(node)
+				else:
+					neighbors = self.G.successors(node)
+				
+				stack.extend([neighbor for neighbor in neighbors if neighbor not in visited])
 
 		return visited
+
 	def check_reachability_cpp(self, graph_input, control_reachability, model, x):
 		global x_set_to_zero 
 
